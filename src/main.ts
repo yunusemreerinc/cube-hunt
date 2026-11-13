@@ -90,6 +90,10 @@ class App {
     this.fileInput = document.getElementById("file") as HTMLInputElement;
     this.fileInput.addEventListener("change", () => this.onFile());
     window.addEventListener("resize", () => this.resize());
+    // Also follow the container, which can change size without the window doing so.
+    if (this.canvas.parentElement && "ResizeObserver" in window) {
+      new ResizeObserver(() => this.resize()).observe(this.canvas.parentElement);
+    }
     this.canvas.addEventListener("pointerdown", (e) => this.onPointer(e));
     const param = Number(new URLSearchParams(location.search).get("level"));
     if (param >= 1 && param <= this.specs.length) this.levelIndex = param - 1;
@@ -310,7 +314,12 @@ class App {
 
   private resize(): void {
     const dpr = window.devicePixelRatio || 1;
-    this.scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+    // Fit the container's content box (the whole page in index.html), keeping the aspect ratio.
+    const host = this.canvas.parentElement ?? document.body;
+    const style = getComputedStyle(host);
+    const availW = host.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const availH = host.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    this.scale = Math.max(0.1, Math.min(availW / W, availH / H));
     this.canvas.style.width = `${W * this.scale}px`;
     this.canvas.style.height = `${H * this.scale}px`;
     this.canvas.width = Math.round(W * this.scale * dpr);
