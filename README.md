@@ -3,13 +3,36 @@
 A browser prototype of a color-sorting puzzle: colored ants eat a pixel-art
 picture cube by cube. You choose which crate of ants to send out next.
 
-## Run it
+## Play it
+
+The game builds into **one HTML file** with everything inlined. It runs in any
+modern browser (desktop or phone) by just opening it: no install and no server.
+
+**Without installing anything:**
+
+1. On GitHub, open **Actions → Test and build**, then the latest run on `main`.
+2. Under **Artifacts**, download **cube-hunt** and unzip it.
+3. Double-click `cube-hunt.html`.
+
+The file is self-contained, so you can also email it, put it on a USB stick, or
+upload it to any static host (Netlify Drop, itch.io as an HTML game, GitHub Pages).
+
+**With Node.js 20 or newer:**
 
 ```bash
 npm install
-npm run dev        # open the printed URL; ?level=3 jumps to a level
+npm run build      # writes dist/index.html; double-click it to play
+```
+
+Add `?level=3` to the URL to jump to a level.
+
+## Develop
+
+```bash
+npm install
+npm run dev        # live-reloading dev server; open the printed URL
 npm test           # rules, generator and solvability tests
-npm run build      # type-check and build into dist/
+npm run build      # type-check, then build the single-file game into dist/
 ```
 
 ## How to play
@@ -39,6 +62,7 @@ src/levels/
   image.ts     uploaded image -> picture (downscale + k-means color reduction)
 src/view/      canvas drawing helpers (tiles, labels, ants)
 src/main.ts    the app: layout, input, animation, overlays
+vite.config.ts build settings, including the step that inlines the code into index.html
 ```
 
 The rules are separate from the visuals. `Game.tick()` decides instantly which cube
