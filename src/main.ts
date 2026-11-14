@@ -4,11 +4,25 @@ import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel } from "./levels/generator";
 import { pictureFromFile } from "./levels/image";
 import { car, label, roundRect, shade, tile } from "./view/draw";
+import { RoadMap, type Pt } from "./view/roads";
 
 // ---- Layout (design units; the canvas is scaled to fit the window) ----
 const W = 420;
 const H = 900;
 const BOARD = { x: 16, y: 64, w: 388, h: 388 };
+/** Road around the field: its center line sits ROAD_INSET inside the board frame. */
+const ROAD_INSET = 13;
+const ROAD_W = 15;
+const RING = {
+  x0: BOARD.x + ROAD_INSET,
+  y0: BOARD.y + ROAD_INSET,
+  x1: BOARD.x + BOARD.w - ROAD_INSET,
+  y1: BOARD.y + BOARD.h - ROAD_INSET,
+};
+/** Gap between the board frame and the cube field, leaving room for the road. */
+const FIELD_INSET = 27;
+/** Trucks keep this far right of the route so traffic in and out doesn't overlap. */
+const LANE = 2.5;
 /** Tunnel ramp the trucks drive back into with their cargo. */
 const TUNNEL = { x: W / 2, y: 496, w: 112, h: 36 };
 const SLOT_Y = 540;
@@ -27,6 +41,7 @@ const TICK_MS = 260;
 const CAR_SPEED = 200;
 /** Seconds a truck stops to load its cube. */
 const LOAD_TIME = 0.25;
+const ROAD_COLOR = "#a3968c";
 /** Distance over which a truck shrinks and fades as it drives down the ramp. */
 const RAMP_FADE = 28;
 
@@ -36,8 +51,13 @@ interface Car {
   /** Where it came up out of the ramp; it grows to full size as it drives away from here. */
   sx: number;
   sy: number;
-  tx: number;
-  ty: number;
+  /** Waypoints being driven, and the index of the next one. */
+  path: Pt[];
+  step: number;
+  /** The way out, kept to drive home along. */
+  route: Pt[];
+  /** Center of the cube it collects. */
+  cube: Pt;
   color: string;
   cell: number;
   /** out: driving to its cube; load: stopped, loading; home: driving to the tunnel. */
@@ -83,6 +103,7 @@ class App {
   /** Random-player win rate of the current level, used as a difficulty label. */
   private winRate = 1;
   private game!: Game;
+  private roads!: RoadMap;
   /** Cells as currently drawn; a cube leaves when its truck picks it up, not when the truck is sent. */
   private shown!: Int16Array;
   private cars: Car[] = [];
@@ -134,6 +155,16 @@ class App {
     this.level = built.level;
     this.winRate = built.winRate;
     this.game = new Game(this.level);
+    const cs = this.cellSize();
+    const p = this.level.picture;
+    this.roads = new RoadMap(
+      this.game.board,
+      BOARD.x + (BOARD.w - cs * p.width) / 2,
+      BOARD.y + (BOARD.h - cs * p.height) / 2,
+      cs,
+      RING,
+      { x: TUNNEL.x, y: RING.y1 },
+    );
     this.shown = Int16Array.from(this.level.picture.cells);
     this.cars = [];
     this.particles = [];
@@ -176,7 +207,7 @@ class App {
 
   private cellSize(): number {
     const p = this.level.picture;
-    return Math.min((BOARD.w - 20) / p.width, (BOARD.h - 20) / p.height);
+    return Math.min((BOARD.w - 2 * FIELD_INSET) / p.width, (BOARD.h - 2 * FIELD_INSET) / p.height);
   }
 
   private cellCenter(i: number): [number, number] {
@@ -254,7 +285,7 @@ class App {
         for (const d of this.game.tick()) {
           // Trucks come up out of the ramp, on the side nearest their slot.
           const r = this.slotRect(d.slot);
-          const [tx, ty] = this.cellCenter(d.cell);
+          const route = this.roads.route(d.cell);
           const half = TUNNEL.w / 2 - 16;
           const sx = TUNNEL.x + Math.max(-half, Math.min(half, r.x + r.w / 2 - TUNNEL.x)) + (Math.random() - 0.5) * 8;
           const sy = TUNNEL.y + TUNNEL.h * 0.2;
@@ -263,8 +294,10 @@ class App {
             y: sy,
             sx,
             sy,
-            tx,
-            ty,
+            path: route,
+            step: 0,
+            route,
+            cube: this.roads.center(d.cell),
             color: this.level.picture.palette[d.color],
             cell: d.cell,
             state: "out",
@@ -278,35 +311,27 @@ class App {
       this.tickAcc = 0;
     }
 
-    const step = CAR_SPEED * sdt;
     for (const c of this.cars) {
       if (c.state === "load") {
+        // Turn to face the cube while loading it.
+        c.angle = turnToward(c.angle, Math.atan2(c.cube.y - c.y, c.cube.x - c.x), 10 * sdt);
         c.wait -= sdt;
         if (c.wait <= 0) {
+          // Drive back out the way it came, then down the ramp.
           c.state = "home";
-          c.tx = TUNNEL.x + (Math.random() - 0.5) * TUNNEL.w * 0.5;
-          c.ty = TUNNEL.y + TUNNEL.h * 0.15;
+          c.path = [
+            ...c.route.slice(0, -1).reverse(),
+            { x: TUNNEL.x + (Math.random() - 0.5) * TUNNEL.w * 0.4, y: TUNNEL.y + TUNNEL.h * 0.15 },
+          ];
+          c.step = 0;
         }
         continue;
       }
-      const dx = c.tx - c.x;
-      const dy = c.ty - c.y;
-      const d = Math.hypot(dx, dy);
+      this.drive(c, CAR_SPEED * sdt);
       // Steer smoothly instead of snapping to the new heading.
-      if (d > 0.5) c.angle = turnToward(c.angle, Math.atan2(dy, dx), 16 * sdt);
-      if (d <= step) {
-        c.x = c.tx;
-        c.y = c.ty;
-        if (c.state === "out") {
-          this.pickUp(c);
-          c.state = "load";
-          c.wait = LOAD_TIME;
-        } else {
-          c.state = "gone";
-        }
-      } else {
-        c.x += (dx / d) * step;
-        c.y += (dy / d) * step;
+      const next = c.path[c.step];
+      if (next && Math.hypot(next.x - c.x, next.y - c.y) > 0.5) {
+        c.angle = turnToward(c.angle, Math.atan2(next.y - c.y, next.x - c.x), 14 * sdt);
       }
     }
     this.cars = this.cars.filter((c) => c.state !== "gone");
@@ -325,6 +350,31 @@ class App {
     if (this.game.status !== "playing" && this.cars.length === 0) this.overlayDelay += dt;
   }
 
+  /** Moves a truck `dist` along its waypoints, handling arrival at the end. */
+  private drive(c: Car, dist: number): void {
+    while (dist > 0 && c.step < c.path.length) {
+      const t = c.path[c.step];
+      const d = Math.hypot(t.x - c.x, t.y - c.y);
+      if (d > dist) {
+        c.x += ((t.x - c.x) / d) * dist;
+        c.y += ((t.y - c.y) / d) * dist;
+        return;
+      }
+      c.x = t.x;
+      c.y = t.y;
+      dist -= d;
+      c.step++;
+    }
+    if (c.step < c.path.length) return;
+    if (c.state === "out") {
+      this.pickUp(c);
+      c.state = "load";
+      c.wait = LOAD_TIME;
+    } else {
+      c.state = "gone";
+    }
+  }
+
   /** The truck lifts its cube off the board, kicking up a little dust. */
   private pickUp(c: Car): void {
     this.shown[c.cell] = EMPTY;
@@ -332,8 +382,8 @@ class App {
     const cs = this.cellSize();
     for (let k = 0; k < 3; k++) {
       this.particles.push({
-        x: c.tx + (Math.random() - 0.5) * cs,
-        y: c.ty + (Math.random() - 0.5) * cs,
+        x: c.cube.x + (Math.random() - 0.5) * cs,
+        y: c.cube.y + (Math.random() - 0.5) * cs,
         vx: (Math.random() - 0.5) * 70,
         vy: -30 - Math.random() * 40,
         life: 0.25 + Math.random() * 0.15,
@@ -377,9 +427,17 @@ class App {
     const carScale = Math.min(1.15, Math.max(0.85, this.cellSize() / 17));
     for (const c of this.cars) {
       // Trucks grow as they climb out of the ramp, and shrink as they roll back down it.
-      const fromRamp = c.state === "home" ? Math.hypot(c.tx - c.x, c.ty - c.y) : Math.hypot(c.x - c.sx, c.y - c.sy);
-      const fade = Math.min(1, fromRamp / RAMP_FADE);
-      car(ctx, c.x, c.y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), 0.35 + 0.65 * fade);
+      let fade = 1;
+      if (c.state === "out" && c.step === 0) fade = Math.hypot(c.x - c.sx, c.y - c.sy) / RAMP_FADE;
+      if (c.state === "home" && c.step === c.path.length - 1) {
+        const end = c.path[c.path.length - 1];
+        fade = Math.hypot(end.x - c.x, end.y - c.y) / RAMP_FADE;
+      }
+      fade = Math.min(1, fade);
+      const lane = LANE * carScale;
+      const x = c.x - Math.sin(c.angle) * lane;
+      const y = c.y + Math.cos(c.angle) * lane;
+      car(ctx, x, y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), 0.35 + 0.65 * fade);
     }
     for (const p of this.particles) {
       ctx.globalAlpha = Math.min(1, p.life * 3);
@@ -441,6 +499,18 @@ class App {
     roundRect(ctx, BOARD.x, BOARD.y, BOARD.w, BOARD.h, 16);
     ctx.fill();
 
+    // The road around the field, with a dashed center line.
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = ROAD_COLOR;
+    ctx.lineWidth = ROAD_W;
+    roundRect(ctx, RING.x0, RING.y0, RING.x1 - RING.x0, RING.y1 - RING.y0, 8);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(255,255,255,0.7)";
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
     const cs = this.cellSize();
     this.drawWalls(cs);
     const gap = Math.max(0.6, cs * 0.06);
@@ -498,6 +568,9 @@ class App {
     const ctx = this.ctx;
     const x = TUNNEL.x - TUNNEL.w / 2;
     const y = TUNNEL.y - TUNNEL.h / 2;
+    // Driveway from the road down to the ramp.
+    ctx.fillStyle = ROAD_COLOR;
+    ctx.fillRect(TUNNEL.x - 11, RING.y1, 22, y - RING.y1 + 2);
     const r = 12;
     ctx.fillStyle = "rgba(110,70,30,0.25)";
     roundRect(ctx, x - 4, y - 2, TUNNEL.w + 8, TUNNEL.h + 10, r + 4);
