@@ -6,6 +6,7 @@ import { pictureFromFile } from "./levels/image";
 import {
   car,
   cubeSprite,
+  holdStripes,
   label,
   luminance,
   numeral,
@@ -802,12 +803,12 @@ class App {
       if (!b) return;
       const color = this.level.picture.palette[b.color];
       const waiting = !this.game.slotCanEat(i);
-      ctx.save();
-      if (waiting) {
-        ctx.globalAlpha = 0.5;
-        ctx.filter = "saturate(0.45)";
-      }
+      // A blocked crate keeps its full color so you can still tell what it is;
+      // stripes, a quieter number and a badge say it is waiting.
       pod(ctx, x, r.y, r.w, r.h, color);
+      if (waiting) holdStripes(ctx, x, r.y, r.w, r.h, color);
+      ctx.save();
+      if (waiting) ctx.globalAlpha = 0.6;
       numeral(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 24, color);
       // How many of this crate's trucks are still to go.
       const start = this.startCounts.get(b.id) ?? b.count;

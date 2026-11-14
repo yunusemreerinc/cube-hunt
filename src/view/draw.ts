@@ -345,3 +345,35 @@ export function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy
   ctx.fillText(text, cx, cy + 0.5);
   ctx.restore();
 }
+
+/**
+ * Faint diagonal "on hold" stripes over a pod's face, so a blocked crate reads as
+ * paused while keeping its full color. Dark stripes on light crates, light ones
+ * on dark crates.
+ */
+export function holdStripes(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  r = 14,
+): void {
+  const face = h - Math.max(3, h * 0.1); // same face height as pod()
+  ctx.save();
+  roundRect(ctx, x, y, w, face, r);
+  ctx.clip();
+  ctx.fillStyle = luminance(color) < 0.35 ? "rgba(255,255,255,0.16)" : "rgba(40,20,5,0.16)";
+  const step = 11;
+  for (let sx = x - face; sx < x + w; sx += step) {
+    ctx.beginPath();
+    ctx.moveTo(sx, y + face);
+    ctx.lineTo(sx + 5, y + face);
+    ctx.lineTo(sx + 5 + face, y);
+    ctx.lineTo(sx + face, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
