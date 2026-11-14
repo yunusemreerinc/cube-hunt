@@ -12,6 +12,7 @@ import {
   holdStripes,
   icon,
   type IconKind,
+  labelWidth,
   luminance,
   numeral,
   pill,
@@ -932,20 +933,20 @@ class App {
     ctx.save();
     ctx.globalAlpha = canSlot ? 1 : 0.45;
     pod(ctx, 24, by, 176, bh, "#5cc464", 20);
-    numeral(ctx, "+1 Slot", 100, mid, 19, "#5cc464");
+    // Flat while it can't be used, so the faded label stays clean.
+    countLabel(ctx, "+1 Slot", 100, mid, 19, "#5cc464", !canSlot);
     badge(ctx, canSlot ? "1" : "0", 168, mid, "#5cc464");
     ctx.restore();
     if (canSlot) this.button(24, by, 176, bh, () => this.addSlot());
 
     pod(ctx, 220, by, 176, bh, "#8f7cf0", 20);
     // Center the icon and the words together as one group.
-    ctx.font = `800 18px "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
-    const textW = ctx.measureText("Your image").width;
+    const textW = labelWidth(ctx, "Your image", 18);
     const iconW = 20;
     const gap = 9;
     const left = 220 + (176 - (iconW + gap + textW)) / 2;
     icon(ctx, "picture", left + iconW / 2, mid, 18, "#8f7cf0");
-    numeral(ctx, "Your image", left + iconW + gap + textW / 2, mid, 18, "#8f7cf0");
+    countLabel(ctx, "Your image", left + iconW + gap + textW / 2, mid, 18, "#8f7cf0");
     this.button(220, by, 176, bh, () => this.fileInput.click());
   }
 
