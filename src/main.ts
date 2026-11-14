@@ -19,11 +19,14 @@ const BLOCK = { w: 80, h: 52, gx: 14, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
 
-/** Milliseconds between truck dispatches at 1x speed. */
-const TICK_MS = 110;
-const CAR_SPEED = 440; // design px per second at 1x
-/** Seconds a truck stops to load its cube, at 1x. */
-const LOAD_TIME = 0.12;
+// Pace at 1x. The speed button multiplies all three, so 2x and 3x are exactly
+// double and triple this pace.
+/** Milliseconds between truck dispatches from each slot. */
+const TICK_MS = 260;
+/** Truck driving speed in design px per second. */
+const CAR_SPEED = 200;
+/** Seconds a truck stops to load its cube. */
+const LOAD_TIME = 0.25;
 /** Distance over which a truck shrinks and fades as it drives down the ramp. */
 const RAMP_FADE = 28;
 
