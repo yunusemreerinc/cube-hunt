@@ -1,4 +1,4 @@
-import { Game } from "./core/game";
+import { Game, type Dispatch } from "./core/game";
 import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel } from "./levels/generator";
@@ -26,33 +26,33 @@ import { RoadMap, type Pt, type Ring } from "./view/roads";
 const W = 420;
 const H = 900;
 const BOARD = { x: 16, y: 64, w: 388, h: 388 };
-const ROAD_W = 15;
+/** Wide enough for two trucks side by side, one each way. */
+const ROAD_W = 23;
 /** Smallest gap between the board frame and the cube field, leaving room for the road. */
-const FIELD_INSET = 31;
+const FIELD_INSET = 38;
 /**
  * The road's center line runs this far outside the cube field on every side, so
- * it hugs the picture whatever its shape (on a square picture it sits 13 px
- * inside the board frame). The brick walls fill the gap on closed sides.
+ * it hugs the picture whatever its shape. The brick walls fill the gap between
+ * the road and the field on closed sides.
  */
-const ROAD_GAP = 18;
+const ROAD_GAP = 22;
 /** Thickness of the brick walls on closed sides, between the road and the field. */
 const WALL_T = 9.5;
-/** Trucks keep this far right of the route so traffic in and out doesn't overlap. */
-const LANE = 2.5;
-/** A truck stops when another is within this distance ahead of it (center to center, at scale 1). */
-const FOLLOW_GAP = 25;
-/** How far to either side of its path a truck checks for traffic, at scale 1. */
-const FOLLOW_WIDTH = 4.5;
-/** Any truck closer than this in front (even off to one side) also makes a truck give way: merging. */
-const MERGE_GAP = 17;
-/** Last-resort limit: seconds a truck waits without moving before squeezing past anyway. */
-const MAX_WAIT = 6;
-/** How long a truck that gave up waiting ignores traffic. */
-const SQUEEZE_TIME = 0.5;
+/**
+ * On the road, trucks keep this far right of the route (at scale 1), so trucks
+ * going opposite ways pass side by side. Inside the picture they drive centered.
+ */
+const LANE = 5.8;
 /** Tunnel ramp the trucks drive back into with their cargo. */
 const TUNNEL = { x: W / 2, y: 496, w: 112, h: 36 };
 /** The ramp has three lanes up to the road, as offsets from its middle. */
 const RAMP_LANES = [-34, 0, 34];
+/**
+ * Trucks in the same ramp lane leave this far apart (design px, center to
+ * center, at scale 1), so a crate's trucks drive in a line you can count
+ * instead of on top of each other. A truck is 21 long.
+ */
+const CONVOY_GAP = 30;
 const SLOT_Y = 540;
 const SLOT_H = 66;
 const TRAY_Y = 636;
@@ -61,21 +61,24 @@ const BLOCK = { w: 80, h: 52, gx: 14, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
 
-// Pace at 1x. The speed button multiplies all three, so 2x and 3x are exactly
-// double and triple this pace.
-/** Milliseconds between truck dispatches from each slot. */
-const TICK_MS = 260;
+// Pace at 1x. Trucks are sent the moment a cube is reachable; the speed button
+// multiplies driving and loading, so 2x and 3x are exactly double and triple.
 /** Truck driving speed in design px per second. */
 const CAR_SPEED = 200;
-/** Seconds a truck stops to load its cube. */
-const LOAD_TIME = 0.25;
+/** Seconds a truck stops to load its cube: the cube lifts out, arcs into the bed and lands. */
+const LOAD_TIME = 0.42;
+/** Share of LOAD_TIME the cube spends working loose and rising out of its spot. */
+const LIFT_END = 0.22;
+/** Share of LOAD_TIME at which the cube lands in the bed; the truck settles after that. */
+const LAND_AT = 0.78;
+/** Where the bed's middle is, in truck units behind the truck's center, and the cargo cube's size. */
+const BED_X = -6.2;
+const BED_CUBE = 8;
 const ROAD_COLOR = "#a3968c";
 /** Distance over which a truck shrinks and fades as it drives down the ramp. */
 const RAMP_FADE = 28;
 
 interface Car {
-  /** Increases with each truck sent; older trucks go first when two block each other. */
-  id: number;
   x: number;
   y: number;
   /** Where it came up out of the ramp; it grows to full size as it drives away from here. */
@@ -95,9 +98,6 @@ interface Car {
   cargo: boolean;
   wait: number;
   angle: number;
-  /** Seconds spent waiting for traffic, and time left squeezing past after waiting too long. */
-  waited: number;
-  squeeze: number;
 }
 interface Particle {
   x: number;
@@ -142,14 +142,14 @@ class App {
   /** Cells as currently drawn; a cube leaves when its truck picks it up, not when the truck is sent. */
   private shown!: Int16Array;
   private cars: Car[] = [];
+  /** Trucks waiting in the tunnel per ramp lane, and seconds until each lane's next one may leave. */
+  private ramp: Car[][] = RAMP_LANES.map(() => []);
+  private rampTimer: number[] = RAMP_LANES.map(() => 0);
   /** Per ramp lane: trucks sent out but still waiting underground for the lane to clear, oldest first. */
-  private tunnelQueues: Car[][] = RAMP_LANES.map(() => []);
-  private nextCarId = 0;
   private particles: Particle[] = [];
   private flyers: Flyer[] = [];
   private buttons: Button[] = [];
   private speed = 1;
-  private tickAcc = 0;
   private slotBoostUsed = false;
   private shake = 0;
   private time = 0;
@@ -212,11 +212,10 @@ class App {
     this.sprites.clear();
     this.startCounts.clear();
     this.cars = [];
-    this.tunnelQueues = RAMP_LANES.map(() => []);
-    this.nextCarId = 0;
+    this.ramp = RAMP_LANES.map(() => []);
+    this.rampTimer = RAMP_LANES.map(() => 0);
     this.particles = [];
     this.flyers = [];
-    this.tickAcc = 0;
     this.slotBoostUsed = false;
     this.overlayDelay = 0;
   }
@@ -326,59 +325,32 @@ class App {
     this.shake = Math.max(0, this.shake - dt);
     const sdt = dt * this.speed;
 
+    // Don't wait between trucks: every slot sends a truck to every reachable cube
+    // of its color right away. Each tick sends at most one per slot, so keep
+    // ticking until nothing more can go.
     if (this.game.status === "playing") {
-      this.tickAcc += sdt * 1000;
-      while (this.tickAcc >= TICK_MS) {
-        this.tickAcc -= TICK_MS;
-        for (const d of this.game.tick()) {
-          // Each truck takes the ramp lane with the shortest drive, counting the trucks
-          // already waiting for it; any queue waits out of sight in the tunnel.
-          let lane = 0;
-          let route: Pt[] = [];
-          let bestScore = Infinity;
-          RAMP_LANES.forEach((dx, k) => {
-            const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: this.ring.y1 });
-            const score = plan.cost + this.tunnelQueues[k].length * FOLLOW_GAP * 1.5;
-            if (score < bestScore) {
-              bestScore = score;
-              lane = k;
-              route = plan.path;
-            }
-          });
-          const sx = TUNNEL.x + RAMP_LANES[lane];
-          const sy = TUNNEL.y + TUNNEL.h * 0.2;
-          this.tunnelQueues[lane].push({
-            id: this.nextCarId++,
-            x: sx,
-            y: sy,
-            sx,
-            sy,
-            path: route,
-            step: 0,
-            route,
-            cube: this.roads.center(d.cell),
-            color: this.level.picture.palette[d.color],
-            cell: d.cell,
-            state: "out",
-            cargo: false,
-            wait: 0,
-            angle: -Math.PI / 2,
-            waited: 0,
-            squeeze: 0,
-          });
-        }
+      for (let sent = this.game.tick(); sent.length > 0; sent = this.game.tick()) {
+        for (const d of sent) this.sendTruck(d);
       }
-    } else {
-      this.tickAcc = 0;
     }
 
-    this.releaseFromTunnel();
-    const blocked = this.trafficAhead();
+    // Each ramp lane lets one truck out at a time, a short gap behind the last.
+    const spacing = (CONVOY_GAP * this.carScale()) / CAR_SPEED;
+    this.ramp.forEach((queue, k) => {
+      this.rampTimer[k] -= sdt;
+      if (queue.length > 0 && this.rampTimer[k] <= 0) {
+        this.cars.push(queue.shift()!);
+        this.rampTimer[k] = spacing;
+      }
+    });
+
     for (const c of this.cars) {
       if (c.state === "load") {
         // Turn to face the cube while loading it.
         c.angle = turnToward(c.angle, Math.atan2(c.cube.y - c.y, c.cube.x - c.x), 10 * sdt);
+        const before = 1 - c.wait / LOAD_TIME;
         c.wait -= sdt;
+        if (before < LAND_AT && 1 - c.wait / LOAD_TIME >= LAND_AT) this.landPuff(c);
         if (c.wait <= 0) {
           // Drive back out the way it came, then down the ramp.
           c.state = "home";
@@ -390,17 +362,7 @@ class App {
         }
         continue;
       }
-      c.squeeze = Math.max(0, c.squeeze - sdt);
-      if (blocked.has(c) && c.squeeze === 0) {
-        c.waited += sdt;
-        if (c.waited > MAX_WAIT) {
-          c.squeeze = SQUEEZE_TIME;
-          c.waited = 0;
-        }
-      } else {
-        c.waited = 0;
-        this.drive(c, CAR_SPEED * sdt);
-      }
+      this.drive(c, CAR_SPEED * sdt);
       // Steer smoothly instead of snapping to the new heading.
       const next = c.path[c.step];
       if (next && Math.hypot(next.x - c.x, next.y - c.y) > 0.5) {
@@ -420,93 +382,60 @@ class App {
     for (const f of this.flyers) f.t += dt * 5.5;
     this.flyers = this.flyers.filter((f) => f.t < 1);
 
-    if (this.game.status !== "playing" && this.cars.length === 0 && this.tunnelQueues.every((q) => q.length === 0)) {
+    if (this.game.status !== "playing" && this.cars.length === 0 && this.ramp.every((q) => q.length === 0)) {
       this.overlayDelay += dt;
     }
   }
 
-  /** The way a truck is going: toward its next waypoint, or the way it faces when stopped. */
-  private heading(c: Car): number {
-    const next = c.state === "load" ? undefined : c.path[c.step];
-    if (next && Math.hypot(next.x - c.x, next.y - c.y) > 0.5) return Math.atan2(next.y - c.y, next.x - c.x);
-    return c.angle;
-  }
-
-  /** In each ramp lane, lets the next queued truck come up once the one before it has moved on. */
-  private releaseFromTunnel(): void {
-    const room = FOLLOW_GAP * this.carScale();
-    for (const queue of this.tunnelQueues) {
-      const next = queue[0];
-      if (!next) continue;
-      const clear = !this.cars.some(
-        (o) => o.state === "out" && o.step === 0 && Math.hypot(o.x - next.sx, o.y - next.sy) < room,
-      );
-      if (clear) this.cars.push(queue.shift()!);
-    }
-  }
-
-  /**
-   * Trucks that must stop this frame: another truck is just ahead in their lane,
-   * or close in front while merging. Oncoming trucks are in the other lane and
-   * don't count. When trucks block each other in a loop, the one sent first goes.
-   */
-  private trafficAhead(): Set<Car> {
-    const s = this.carScale();
-    const gap = FOLLOW_GAP * s;
-    const width = FOLLOW_WIDTH * s;
-    const merge = MERGE_GAP * s;
-    const cars = this.cars;
-    const dirs = cars.map((c) => this.heading(c));
-    const ahead = cars.map(() => new Set<number>());
-    for (let i = 0; i < cars.length; i++) {
-      if (cars[i].state === "load") continue; // parked trucks don't need to look
-      const fx = Math.cos(dirs[i]);
-      const fy = Math.sin(dirs[i]);
-      for (let j = 0; j < cars.length; j++) {
-        if (i === j) continue;
-        const dx = cars[j].x - cars[i].x;
-        const dy = cars[j].y - cars[i].y;
-        const along = dx * fx + dy * fy;
-        if (along <= 0 || along > gap) continue;
-        if (Math.cos(dirs[i] - dirs[j]) < -0.5) continue; // oncoming, in the other lane
-        const inLane = Math.abs(dx * fy - dy * fx) <= width;
-        const merging = Math.hypot(dx, dy) < merge;
-        if (inLane || merging) ahead[i].add(j);
+  /** Sends a truck up the ramp lane with the shortest drive to its cube, right away. */
+  private sendTruck(d: Dispatch): void {
+    // Trucks never stop for each other: where routes cross they drive straight
+    // through. They do leave each ramp lane in a spaced-out line, so each one
+    // can be seen on its own.
+    let lane = 0;
+    let route: Pt[] = [];
+    let bestScore = Infinity;
+    RAMP_LANES.forEach((dx, k) => {
+      const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: this.ring.y1 });
+      const score = plan.cost;
+      if (score < bestScore) {
+        bestScore = score;
+        lane = k;
+        route = plan.path;
       }
-    }
-    // Each stopped truck waits for the nearest truck in its way.
-    const waitsFor = new Map<number, number>();
-    ahead.forEach((set, i) => {
-      let best = -1;
-      let bestD = Infinity;
-      for (const j of set) {
-        const d = Math.hypot(cars[j].x - cars[i].x, cars[j].y - cars[i].y);
-        if (d < bestD) {
-          bestD = d;
-          best = j;
-        }
-      }
-      if (best >= 0) waitsFor.set(i, best);
     });
-    // A queue behind a moving or loading truck is fine. A loop (A waits for B ...
-    // waits for A) would never clear, so the oldest truck in the loop goes.
-    const out = new Set<Car>();
-    for (const i of waitsFor.keys()) {
-      const chain = [i];
-      let j = waitsFor.get(i)!;
-      while (waitsFor.has(j) && !chain.includes(j) && chain.length < cars.length) {
-        chain.push(j);
-        j = waitsFor.get(j)!;
-      }
-      const loop = j === i;
-      const oldest = loop && chain.every((k) => cars[k].id >= cars[i].id);
-      if (!oldest) out.add(cars[i]);
-    }
-    return out;
+    const sx = TUNNEL.x + RAMP_LANES[lane];
+    const sy = TUNNEL.y + TUNNEL.h * 0.2;
+    this.ramp[lane].push({
+      x: sx,
+      y: sy,
+      sx,
+      sy,
+      path: route,
+      step: 0,
+      route,
+      cube: this.roads.center(d.cell),
+      color: this.level.picture.palette[d.color],
+      cell: d.cell,
+      state: "out",
+      cargo: false,
+      wait: 0,
+      angle: -Math.PI / 2,
+    });
   }
 
   private carScale(): number {
-    return Math.min(1.15, Math.max(0.85, this.cellSize() / 17));
+    return Math.min(1, Math.max(0.85, this.cellSize() / 17));
+  }
+
+  /** How far to keep right here: full lane on the road, none on the one-lane parts, blended at the edge. */
+  private laneShare(x: number, y: number): number {
+    const r = this.ring;
+    if (y > r.y1 && Math.abs(x - TUNNEL.x) <= RAMP_LANES[RAMP_LANES.length - 1] + 14) return 1; // driveway
+    let d = Infinity; // distance to the road's center line
+    if (x >= r.x0 && x <= r.x1) d = Math.min(d, Math.abs(y - r.y0), Math.abs(y - r.y1));
+    if (y >= r.y0 && y <= r.y1) d = Math.min(d, Math.abs(x - r.x0), Math.abs(x - r.x1));
+    return Math.max(0, Math.min(1, (ROAD_W / 2 + 2 - d) / 4));
   }
 
   /** Moves a truck `dist` along its waypoints, handling arrival at the end. */
@@ -531,6 +460,86 @@ class App {
       c.wait = LOAD_TIME;
     } else {
       c.state = "gone";
+    }
+  }
+
+  /** Where a truck is drawn: on the road it keeps to its own lane. */
+  private carPose(c: Car): Pt {
+    const lane = LANE * this.carScale() * this.laneShare(c.x, c.y);
+    return { x: c.x - Math.sin(c.angle) * lane, y: c.y + Math.cos(c.angle) * lane };
+  }
+
+  /** Middle of a truck's open bed, where its cube ends up. */
+  private bedPoint(c: Car): Pt {
+    const { x, y } = this.carPose(c);
+    const back = BED_X * this.carScale();
+    return { x: x + Math.cos(c.angle) * back, y: y + Math.sin(c.angle) * back };
+  }
+
+  /**
+   * A cube being loaded, at `t` (0..LAND_AT) through the load: it rocks loose and
+   * rises out of its spot, then arcs up and over into the truck's bed, turning to
+   * sit square in it and shrinking to the bed's size. Its shadow stays on the
+   * ground, so the height reads clearly.
+   */
+  private drawLoading(c: Car, t: number): void {
+    const ctx = this.ctx;
+    const cs = this.cellSize();
+    const s = cs - Math.max(1, cs * 0.1);
+    const px = Math.round(s * this.scale * (window.devicePixelRatio || 1));
+    const img = this.sprite(c.color, px, () => cubeSprite(c.color, px));
+    const bed = this.bedPoint(c);
+    const bedSize = BED_CUBE * this.carScale();
+    const rise = cs * 0.3;
+    const peak = cs * 1.1;
+    let x = c.cube.x;
+    let y = c.cube.y;
+    let h: number;
+    let size = s;
+    let rot: number;
+    if (t < LIFT_END) {
+      const k = t / LIFT_END;
+      h = rise * k * k;
+      rot = Math.sin(k * Math.PI * 3) * 0.12 * (1 - k); // rocks loose
+    } else {
+      const k = (t - LIFT_END) / (LAND_AT - LIFT_END);
+      const e = k * k * (3 - 2 * k);
+      x += (bed.x - x) * e;
+      y += (bed.y - y) * e;
+      h = rise * (1 - k) + 4 * peak * k * (1 - k);
+      size = s + (bedSize - s) * e;
+      // Turn the short way round to line up with the truck.
+      const turn = Math.atan2(Math.sin(c.angle), Math.cos(c.angle));
+      const quarter = Math.round(turn / (Math.PI / 2)) * (Math.PI / 2);
+      rot = (turn - quarter) * e;
+    }
+    const lift = h / (rise + peak);
+    ctx.save();
+    ctx.fillStyle = `rgba(60,30,10,${0.28 * (1 - 0.5 * lift)})`;
+    ctx.beginPath();
+    ctx.ellipse(x + h * 0.25, y + size * 0.15, size * 0.5 * (1 - 0.3 * lift), size * 0.38 * (1 - 0.3 * lift), 0, 0, Math.PI * 2);
+    ctx.fill();
+    const drawn = size * (1 + 0.25 * lift); // closer to the eye when higher up
+    ctx.translate(x, y - h);
+    ctx.rotate(rot);
+    ctx.drawImage(img, -drawn / 2, -drawn / 2, drawn, drawn);
+    ctx.restore();
+  }
+
+  /** A little dust where the cube lands in the bed. */
+  private landPuff(c: Car): void {
+    const bed = this.bedPoint(c);
+    for (let k = 0; k < 4; k++) {
+      const a = Math.random() * Math.PI * 2;
+      this.particles.push({
+        x: bed.x,
+        y: bed.y,
+        vx: Math.cos(a) * (30 + Math.random() * 30),
+        vy: Math.sin(a) * (30 + Math.random() * 30) - 20,
+        life: 0.18 + Math.random() * 0.1,
+        color: "#efe2cc",
+        size: 2,
+      });
     }
   }
 
@@ -597,10 +606,20 @@ class App {
       }
       fade = Math.min(1, fade);
       if (fade <= 0.02) continue; // still down in the tunnel
-      const lane = LANE * carScale;
-      const x = c.x - Math.sin(c.angle) * lane;
-      const y = c.y + Math.cos(c.angle) * lane;
-      car(ctx, x, y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), fade);
+      const { x, y } = this.carPose(c);
+      let size = carScale * (0.55 + 0.45 * fade);
+      let cargo = c.cargo;
+      if (c.state === "load") {
+        const t = 1 - c.wait / LOAD_TIME;
+        cargo = t >= LAND_AT;
+        // The springs give a little as the cube lands, then settle.
+        if (cargo) size *= 1 - 0.07 * Math.sin(((t - LAND_AT) / (1 - LAND_AT)) * Math.PI);
+      }
+      car(ctx, x, y, c.angle, c.color, cargo, size, fade);
+    }
+    // Cubes on their way into a truck are in the air, so they go over everything.
+    for (const c of this.cars) {
+      if (c.state === "load" && 1 - c.wait / LOAD_TIME < LAND_AT) this.drawLoading(c, 1 - c.wait / LOAD_TIME);
     }
     for (const p of this.particles) {
       ctx.globalAlpha = Math.min(1, p.life * 3);

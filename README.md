@@ -44,19 +44,21 @@ Rubber Duck, Ice Cream and Watermelon.
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
 - Tapping a crate moves it into a free **slot**. Its trucks drive up out of the
-  ramp one by one and follow the road around the field. Each turns in at an open
+  ramp right away, spaced out in a line so you can see each one, and follow the road around the field. Each turns in at an open
   side, drives through cleared space to one reachable cube of its color, loads it
-  and carries it back down the ramp. Trucks wait their turn: they queue behind
-  each other, give way when merging, and wait in the tunnel until their ramp lane
-  is clear.
+  and carries it back down the ramp. Trucks never stop for each other: where
+  their routes cross, they drive straight through. On the road they keep to a lane
+  each way.
 - A cube is **reachable** when a truck can drive up to it: it touches an open edge
   of the field, or cleared space that connects to one. A cube only counts as
   cleared once its truck has actually picked it up, so crates never send trucks
   to cubes that are still walled in.
-- Each truck takes the nearest reachable cube of its color: the shortest drive
-  from the ramp, counting the road plus the cleared cells inside the field. Rows
-  don't matter, so a second-row cube just above a cleared gap goes before a
-  first-row cube further along the road. On most levels trucks can
+- Cubes next to the road go first, from the middle out: each truck takes the
+  reachable cube of its color that is fewest cells in from the road (with no
+  brick wall in the way), then the one with the shortest drive from the ramp, so
+  a row is taken from the middle out to both sides. A crate sends a truck to
+  every reachable cube at once: with 15 reachable cubes, 15 trucks go straight
+  away; any more go the moment a pickup opens up a new cube. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
   and the field show which sides are closed.
 - A crate whose color has nothing reachable is marked **blocked**. If every slot
@@ -78,7 +80,7 @@ src/levels/
 src/view/
   draw.ts      canvas drawing helpers (tiles, labels, trucks)
   roads.ts     truck routes: road around the field, then through cleared cells
-src/main.ts    the app: layout, input, traffic, animation, overlays
+src/main.ts    the app: layout, input, animation, overlays
 vite.config.ts build settings, including the step that inlines the code into index.html
 ```
 

@@ -10,11 +10,10 @@ export type Side = "top" | "right" | "bottom" | "left";
  * Transparent cells sealed inside the picture don't count until a truck can get
  * to them, so the rules always match where a truck can actually drive.
  *
- * Each truck takes the nearest reachable cube of its color: the shortest drive
- * from the ramp (which sits below the middle of the bottom edge), counting the
- * road plus the cleared cells it drives through inside the field. Rows don't
- * matter: a second-row cube right above a cleared gap goes before a first-row
- * cube further along the road.
+ * Cubes touching the road go first, from the middle out: each truck takes the
+ * reachable cube of its color that is fewest cells in from an open edge, then
+ * the one with the shortest drive along the road from the ramp (which sits below
+ * the middle of the bottom edge).
  */
 export class Board {
   readonly width: number;
@@ -134,13 +133,11 @@ export class Board {
   }
 
   /**
-   * Is a way in of d1 cells inside after r1 of road shorter than (d2, r2)? The
-   * shorter total drive wins; on a tie, the one closer to the edge.
+   * Is a way in of d1 cells inside after r1 of road better than (d2, r2)? Fewer
+   * cells in from the road wins; on a tie, the shorter road.
    */
   private static better(d1: number, r1: number, d2: number, r2: number): boolean {
-    const t1 = d1 + r1;
-    const t2 = d2 + r2;
-    return t1 < t2 || (t1 === t2 && d1 < d2);
+    return d1 < d2 || (d1 === d2 && r1 < r2);
   }
 
   /**
@@ -193,62 +190,18 @@ export class Board {
   }
 
   /**
-   * The next cube of `color` for a truck, or -1 if none is reachable: the one
-   * with the shortest drive from the ramp, then the one closer to the edge, then
-   * the lowest index, so the choice is deterministic.
+   * The next cube of `color` for a truck, or -1 if none can go now: the one fewest
+   * cells in from the road, then the shortest drive from the ramp (so a row goes
+   * from the middle out to the sides), then the lowest index (deterministic).
    */
   pickTarget(color: ColorId): number {
-    // Hot path (the level generator runs it millions of times), so no allocations.
-    const w = this.width;
-    const h = this.height;
-    const open = this.open;
-    const depth = this.depth;
-    const road = this.road;
-    const mid = w / 2;
     let best = -1;
     let bestDepth = Infinity;
     let bestRoad = Infinity;
     for (const i of this.reachable[color]) {
-      const x = i % w;
-      const y = (i - x) / w;
-      let d = Infinity;
-      let r = Infinity;
-      // Straight in from the road, if it is on an open edge...
-      if (y === h - 1) {
-        d = 0;
-        r = Math.abs(x + 0.5 - mid);
-      }
-      if (this.edges !== "bottom" && (x === 0 || x === w - 1)) {
-        const rs = mid + (h - y - 0.5);
-        if (Board.better(0, rs, d, r)) {
-          d = 0;
-          r = rs;
-        }
-      }
-      if (this.edges === "all" && y === 0) {
-        const rs = mid + h + Math.min(x + 0.5, w - x - 0.5);
-        if (Board.better(0, rs, d, r)) {
-          d = 0;
-          r = rs;
-        }
-      }
-      // ...or through its best cleared neighbor, whichever is the shorter drive.
-      if (x > 0 && open[i - 1] === 1 && Board.better(depth[i - 1] + 1, road[i - 1], d, r)) {
-        d = depth[i - 1] + 1;
-        r = road[i - 1];
-      }
-      if (x < w - 1 && open[i + 1] === 1 && Board.better(depth[i + 1] + 1, road[i + 1], d, r)) {
-        d = depth[i + 1] + 1;
-        r = road[i + 1];
-      }
-      if (y > 0 && open[i - w] === 1 && Board.better(depth[i - w] + 1, road[i - w], d, r)) {
-        d = depth[i - w] + 1;
-        r = road[i - w];
-      }
-      if (y < h - 1 && open[i + w] === 1 && Board.better(depth[i + w] + 1, road[i + w], d, r)) {
-        d = depth[i + w] + 1;
-        r = road[i + w];
-      }
+      this.wayIn(i);
+      const d = this.wayDepth;
+      const r = this.wayRoad;
       if (Board.better(d, r, bestDepth, bestRoad) || (d === bestDepth && r === bestRoad && i < best)) {
         bestDepth = d;
         bestRoad = r;
@@ -256,6 +209,64 @@ export class Board {
       }
     }
     return best;
+  }
+
+  /** Results of wayIn(), kept in fields so the hot path allocates nothing. */
+  private wayDepth = Infinity;
+  private wayRoad = Infinity;
+
+  /**
+   * How a truck gets to cube i: cells in from the road (wayDepth) and road distance
+   * from the ramp (wayRoad), either straight in from an open edge or through its
+   * best cleared neighbor. Hot path (the level generator runs it millions of times).
+   */
+  private wayIn(i: number): void {
+    const w = this.width;
+    const h = this.height;
+    const open = this.open;
+    const depth = this.depth;
+    const road = this.road;
+    const mid = w / 2;
+    const x = i % w;
+    const y = (i - x) / w;
+    let d = Infinity;
+    let r = Infinity;
+    if (y === h - 1) {
+      d = 0;
+      r = Math.abs(x + 0.5 - mid);
+    }
+    if (this.edges !== "bottom" && (x === 0 || x === w - 1)) {
+      const rs = mid + (h - y - 0.5);
+      if (Board.better(0, rs, d, r)) {
+        d = 0;
+        r = rs;
+      }
+    }
+    if (this.edges === "all" && y === 0) {
+      const rs = mid + h + Math.min(x + 0.5, w - x - 0.5);
+      if (Board.better(0, rs, d, r)) {
+        d = 0;
+        r = rs;
+      }
+    }
+    if (x > 0 && open[i - 1] === 1 && Board.better(depth[i - 1] + 1, road[i - 1], d, r)) {
+      d = depth[i - 1] + 1;
+      r = road[i - 1];
+    }
+    if (x < w - 1 && open[i + 1] === 1 && Board.better(depth[i + 1] + 1, road[i + 1], d, r)) {
+      d = depth[i + 1] + 1;
+      r = road[i + 1];
+    }
+    if (y > 0 && open[i - w] === 1 && Board.better(depth[i - w] + 1, road[i - w], d, r)) {
+      d = depth[i - w] + 1;
+      r = road[i - w];
+    }
+    if (y < h - 1 && open[i + w] === 1 && Board.better(depth[i + w] + 1, road[i + w], d, r)) {
+      d = depth[i + w] + 1;
+      r = road[i + w];
+    }
+    this.wayDepth = d;
+    this.wayRoad = r;
   }
 
   /**

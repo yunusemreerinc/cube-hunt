@@ -314,11 +314,11 @@ export function builtInLevels(): LevelSpec[] {
     { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
     { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 23 },
     { picture: sunset(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.6, seed: 40 },
-    { picture: planet(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.48, seed: 66 },
+    { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 65 },
     { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 41 },
     // A second run of levels, again from easier to harder.
     { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 75 },
-    { picture: rocket(), edges: "bottom", shuffle: 2, targetWinRate: 0.74, seed: 103 },
+    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 103 },
     { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 67 },
     { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 83 },
     { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 101 },

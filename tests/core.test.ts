@@ -175,40 +175,67 @@ describe("claimed cubes", () => {
   });
 });
 
-describe("nearest cube first", () => {
-  it("takes a second-row cube above a cleared gap before a first-row cube further along the road", () => {
-    // 7 wide, 2 tall, one color, only the bottom open. Clear the middle three
-    // cubes of the bottom row.
-    const p: Picture = { name: "two-rows", width: 7, height: 2, cells: new Int16Array(14), palette: ["#000"] };
-    const b = new Board(p, "bottom");
-    for (const x of [3, 2, 4]) b.eat(7 + x);
-    // The second-row cube above the middle of the gap is 1 cell's drive away;
-    // the first-row cubes left at (1,1) and (5,1) are 2 along the road.
-    expect(b.pickTarget(0)).toBe(3);
-    b.eat(3);
-    // Now the nearest are 2 away: (2,0) through the gap, and (1,1) on the first
-    // row. On a tie the one closer to the edge goes first: the first-row cube.
-    expect(b.pickTarget(0)).toBe(7 + 1);
-  });
-
-  it("measures the real drive: road plus cells inside, not a straight line", () => {
-    // 9 wide, 4 tall. Clear the middle of the bottom row and dig a shaft up the
-    // middle column.
+describe("cubes next to the road first", () => {
+  it("takes a cube next to the road before a nearer one further in", () => {
+    // 9 wide, 4 tall, only the bottom open (walls on the other sides). Clear the
+    // middle of the bottom row and dig a shaft up the middle column.
     const p: Picture = { name: "wide", width: 9, height: 4, cells: new Int16Array(36), palette: ["#000"] };
     const b = new Board(p, "bottom");
     for (const x of [4, 3, 5, 2, 6]) b.eat(27 + x);
     b.eat(22);
     b.eat(13);
-    // The shaft wall at (3,2) is 2 cells' drive away (into the gap, one up);
-    // the first-row cube at (1,3) is 3 along the road. The wall is nearer.
-    expect(b.pickTarget(0)).toBe(21);
+    // The shaft wall at (3,2) is a shorter drive, but it is a cell in from the
+    // road; the bottom-row cube at (1,3) is next to the road, so it goes first.
+    expect(b.pickTarget(0)).toBe(27 + 1);
   });
 
-  it("among equally near cubes, takes the lower index", () => {
+  it("does not count cubes behind a wall as next to the road", () => {
+    // 3x3, only the bottom open: the side and top cubes touch the road but a wall
+    // is in the way, so only the bottom row is reachable.
+    const p: Picture = { name: "sq", width: 3, height: 3, cells: new Int16Array(9), palette: ["#000"] };
+    const b = new Board(p, "bottom");
+    expect(b.reachableCells(0).sort((x, y) => x - y)).toEqual([6, 7, 8]);
+  });
+
+  it("among cubes next to the road, takes the shortest drive from the ramp", () => {
     const p: Picture = { name: "row", width: 7, height: 1, cells: new Int16Array(7), palette: ["#000"] };
     const b = new Board(p, "bottom");
     expect(b.pickTarget(0)).toBe(3);
     b.eat(3);
-    expect(b.pickTarget(0)).toBe(2); // 2 and 4 are both 1 away
+    expect(b.pickTarget(0)).toBe(2); // 2 and 4 are both 1 along the road; the lower index wins
+  });
+
+  it("takes a row from the middle out, and never makes trucks wait", () => {
+    // 5 wide, 2 tall, only the bottom open; one crate of 10 trucks.
+    const p: Picture = { name: "rows", width: 5, height: 2, cells: new Int16Array(10), palette: ["#000"] };
+    const level: Level = { picture: p, columns: [[{ id: 0, color: 0, count: 10 }]], slotCount: 1, edges: "bottom" };
+    const g = new Game(level);
+    g.tap(0);
+    const claims: number[] = [];
+    for (let sent = g.tick(); sent.length; sent = g.tick()) claims.push(...sent.map((d) => d.cell));
+    // Bottom row (cells 5..9): middle first, then out to both sides.
+    expect(claims).toEqual([7, 6, 8, 5, 9]);
+    // Picking up the middle opens the cube above it, and a truck goes for it at once.
+    g.collect(7);
+    expect(g.tick().map((d) => d.cell)).toEqual([2]);
+    expect(g.tick()).toEqual([]);
+  });
+
+  it("sends one truck to each reachable cube: 15 reachable cubes, 15 trucks", () => {
+    // 15 wide, 2 tall, only the bottom open: the 15 bottom cubes are reachable.
+    const p: Picture = { name: "15", width: 15, height: 2, cells: new Int16Array(30), palette: ["#000"] };
+    const level: Level = { picture: p, columns: [[{ id: 0, color: 0, count: 20 }]], slotCount: 1, edges: "bottom" };
+    const g = new Game(level);
+    g.tap(0);
+    const sent = new Set<number>();
+    for (let t = 0; t < 30; t++) for (const d of g.tick()) sent.add(d.cell);
+    // All 15 reachable cubes got a truck, each its own; the crate's other 5 wait.
+    expect([...sent].sort((x, y) => x - y)).toEqual(Array.from({ length: 15 }, (_, i) => 15 + i));
+    expect(g.slots[0]?.count).toBe(5);
+    expect(g.status).toBe("playing"); // trucks are still on their way, so not stuck
+    // Each pickup opens the cube above it, and a waiting truck goes for it right away.
+    g.collect(15 + 7);
+    expect(g.tick().map((d) => d.cell)).toEqual([7]);
+    expect(g.tick()).toEqual([]);
   });
 });
