@@ -37,6 +37,10 @@ npm run build      # type-check, then build the single-file game into dist/
 
 ## How to play
 
+There are 10 built-in levels in two runs that each go from easier to harder:
+Strawberry, Mushroom, Sunset, Ringed Planet and Cat, then Cactus, Rocket,
+Rubber Duck, Ice Cream and Watermelon.
+
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
 - Tapping a crate moves it into a free **slot**. Its trucks drive up out of the
@@ -84,14 +88,16 @@ speed toggle simple and lets the solver run thousands of games in milliseconds.
    becomes reachable.
 2. Cut each color's cubes into crates, ordered roughly by when they open up.
    `shuffle` adds noise to that order.
-3. Deal the crates into 4 columns, earliest at the front.
+3. Deal the crates into 4 columns, earliest at the front. All randomness comes
+   from a seeded generator, so a level is identical in every browser.
 4. Generate up to 16 candidate trays. Drop any that the greedy solver can't win, so
    every level is winnable without boosters. Of the rest, keep the one whose
    **random-player win rate** (how often someone tapping at random still wins) is
    closest to the level's `targetWinRate`. That rate is also shown as the
    Easy / Medium / Hard / Expert label.
 
-Truck totals always match the picture exactly, and the tests check this.
+Truck totals always match the picture exactly, and the tests check this. Each
+level's colors are also chosen to be easy to tell apart on small cubes.
 
 ## Ideas for next steps
 

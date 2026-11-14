@@ -192,6 +192,116 @@ function planet(): Picture {
   });
 }
 
+function duck(): Picture {
+  const s = new Sketch(24, 24, "B");
+  // Body with a perky tail, and a round head.
+  s.ellipse(11, 15, 8.5, 4.6, "Y");
+  s.triangle(2, 9.5, 4.5, 15, 8.5, 13, "Y");
+  s.circle(15.5, 8, 4.4, "Y");
+  s.outline("Y", "B", "K");
+  // Beak, eye and a shine on the head.
+  s.rect(20, 8, 21, 9, "O").set(22, 9, "O");
+  s.set(16, 7, "K").set(14, 6, "W");
+  // Water covering the bottom of the duck, with white crests.
+  s.rect(0, 19, 23, 23, "S");
+  s.paint("W", (_x, y) => (y > 19 && y < 20) || (y > 22 && y < 23), "S");
+  s.paint("S", (x, y) => y > 19 && Math.sin(x * 1.3) < 0.2, "W");
+  return s.toPicture("Rubber Duck", {
+    B: "#c79af0",
+    Y: "#ffd21f",
+    K: "#2b2340",
+    O: "#ff6a13",
+    W: "#ffffff",
+    S: "#1a69cf",
+  });
+}
+
+function cactus(): Picture {
+  const s = new Sketch(22, 24, "B");
+  // Trunk with a rounded top, and two arms.
+  s.rect(8, 6, 13, 17, "G").circle(10.5, 6, 3, "G");
+  s.rect(3, 8, 5, 13, "G").circle(4, 8, 1.6, "G").rect(3, 13, 8, 15, "G");
+  s.rect(16, 6, 18, 11, "G").circle(17, 6, 1.6, "G").rect(13, 11, 18, 13, "G");
+  s.outline("G", "B", "g");
+  s.rect(10, 5, 10, 16, "g"); // a rib down the trunk
+  // A flower on top.
+  s.circle(10.5, 2.6, 1.9, "P").set(10, 2, "Y").set(11, 2, "Y");
+  // Terracotta pot with a rim.
+  s.rect(4, 18, 17, 19, "T");
+  s.paint("T", (x, y) => y > 20 && Math.abs(x - 11) <= 5.5 - (y - 20) * 0.5);
+  return s.toPicture("Cactus", {
+    B: "#8ed0f5",
+    G: "#4cbb4f",
+    g: "#14522a",
+    P: "#ff4fa0",
+    Y: "#ffd21f",
+    T: "#b84a24",
+  });
+}
+
+function iceCream(): Picture {
+  const s = new Sketch(20, 26, "N");
+  // Waffle cone.
+  s.triangle(4, 13, 16, 13, 10, 25.5, "C");
+  s.paint("c", (x, y) => Math.floor(x + y) % 4 === 0 || Math.floor(x - y + 40) % 4 === 0, "C");
+  // Mint scoop with drips, a strawberry scoop on top, sprinkles and a cherry.
+  s.circle(10, 11.5, 5.6, "M");
+  s.rect(5, 13, 5, 15, "M").rect(14, 13, 14, 16, "M");
+  s.circle(10, 6.6, 4.6, "P");
+  for (const [x, y] of [[8, 5], [11, 4], [12, 7], [8, 8], [10, 6]]) s.set(x, y, "W");
+  s.circle(10, 1.6, 1.3, "R");
+  return s.toPicture("Ice Cream", {
+    N: "#2e3a6e",
+    C: "#f0b264",
+    c: "#5e3210",
+    M: "#4fd29a",
+    P: "#ff94c6",
+    W: "#ffffff",
+    R: "#f2002f",
+  });
+}
+
+function rocket(): Picture {
+  const s = new Sketch(24, 28, "N");
+  const stars = [[2, 2], [20, 3], [5, 9], [21, 11], [3, 17], [19, 19], [6, 25], [18, 26], [10, 1], [15, 5]];
+  for (const [x, y] of stars) s.set(x, y, "Y");
+  // Body: a tall rounded hull with a red nose.
+  s.ellipse(12, 11.5, 4.7, 10, "W");
+  s.rect(8, 12, 15, 20, "W");
+  s.paint("R", (_x, y) => y < 5.5, "W");
+  // Fins.
+  s.triangle(8, 14, 8, 22, 3.5, 22, "R").triangle(16, 14, 16, 22, 20.5, 22, "R");
+  // Round window.
+  s.circle(12, 10.5, 2.5, "B");
+  // Flame.
+  s.triangle(8.5, 21, 15.5, 21, 12, 27.8, "O").triangle(10, 21, 14, 21, 12, 25.5, "Y");
+  return s.toPicture("Rocket", {
+    N: "#1b1f3a",
+    Y: "#ffd21f",
+    W: "#ffffff",
+    R: "#d61f4a",
+    B: "#3fa2e3",
+    O: "#ff7a14",
+  });
+}
+
+function watermelon(): Picture {
+  const s = new Sketch(26, 20, "B");
+  // A half slice, flat side up: dark rind, light rind, red flesh.
+  const inside = (r: number) => (x: number, y: number) => y >= 3 && (x - 13) ** 2 + (y - 3) ** 2 <= r * r;
+  s.paint("G", inside(12.5)).paint("L", inside(11)).paint("R", inside(9.6));
+  for (const [x, y] of [[8, 6], [12, 5], [16, 6], [10, 9], [14, 9], [18, 9], [7, 9], [12, 12], [16, 11]]) {
+    s.set(x, y, "K");
+  }
+  return s.toPicture("Watermelon", {
+    B: "#b3c7ff",
+    G: "#257a35",
+    L: "#c4ee86",
+    R: "#ff4b5c",
+    K: "#2b2340",
+  });
+}
+
 export interface LevelSpec extends BuildOptions {
   picture: Picture;
 }
@@ -201,7 +311,13 @@ export function builtInLevels(): LevelSpec[] {
     { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
     { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 23 },
     { picture: sunset(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.6, seed: 37 },
-    { picture: planet(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.45, seed: 59 },
+    { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.45, seed: 61 },
     { picture: cat(), edges: "bottom", shuffle: 0.8, targetWinRate: 0.4, seed: 41 },
+    // A second run of levels, again from easier to harder.
+    { picture: cactus(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.75, seed: 71 },
+    { picture: rocket(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.8, seed: 101 },
+    { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 67 },
+    { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 83 },
+    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 101 },
   ];
 }
