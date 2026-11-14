@@ -37,6 +37,21 @@ export class RoadMap {
     return { x: this.ox + (x + 0.5) * this.cs, y: this.oy + (y + 0.5) * this.cs };
   }
 
+  /** Where a truck parks to load a cube on an open edge: one cell outside it, touching it. */
+  beside(i: number, side: Side): Pt {
+    const c = this.center(i);
+    switch (side) {
+      case "top":
+        return { x: c.x, y: c.y - this.cs };
+      case "bottom":
+        return { x: c.x, y: c.y + this.cs };
+      case "left":
+        return { x: c.x - this.cs, y: c.y };
+      case "right":
+        return { x: c.x + this.cs, y: c.y };
+    }
+  }
+
   /** The point on the road straight out from a cell on the given board side. */
   roadPoint(i: number, side: Side): Pt {
     const c = this.center(i);
@@ -101,9 +116,9 @@ export class RoadMap {
   }
 
   /**
-   * Route from the driveway to where a truck parks to load cell `t`: next to it
-   * on a cleared cell, or on the road if the cube sits on an open edge. The first
-   * point is `entry`. Picks the shortest total drive.
+   * Route from the driveway to where a truck parks to load cell `t`: next to it,
+   * either on a cleared cell or, for a cube on an open edge, just outside the
+   * field facing it. The first point is `entry`. Picks the shortest total drive.
    */
   route(t: number): Pt[] {
     return this.routeFrom(t, this.entry).path;
@@ -116,7 +131,7 @@ export class RoadMap {
     const toward = new Int32Array(dist.length).fill(-1); // next cell on the way to the target
     dist[t] = 0;
     const queue = [t];
-    let best: { cell: number; road: Pt; cost: number } | null = null;
+    let best: { cell: number; side: Side; road: Pt; cost: number } | null = null;
     for (let q = 0; q < queue.length; q++) {
       const u = queue[q];
       const c = this.center(u);
@@ -124,7 +139,7 @@ export class RoadMap {
         const road = this.roadPoint(u, side);
         const cost =
           dist[u] * this.cs + Math.hypot(road.x - c.x, road.y - c.y) + this.roadDistance(entry, road);
-        if (!best || cost < best.cost) best = { cell: u, road, cost };
+        if (!best || cost < best.cost) best = { cell: u, side, road, cost };
       }
       for (const n of board.neighbors(u)) {
         if (dist[n] >= 0 || !board.isOpen(n)) continue;
@@ -140,6 +155,8 @@ export class RoadMap {
     }
     const path = [entry, ...this.roadPath(entry, best.road)];
     for (let u = best.cell; u !== t; u = toward[u]) path.push(this.center(u));
+    // A cube on the edge itself: leave the road and pull up right next to it.
+    if (best.cell === t) path.push(this.beside(t, best.side));
     return { path, cost: best.cost };
   }
 }

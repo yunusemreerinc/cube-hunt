@@ -28,13 +28,15 @@ function solid(width: number, height: number): Picture {
 }
 
 describe("RoadMap", () => {
-  it("parks on the road below a cube on the open bottom edge", () => {
+  it("leaves the road and parks right below a cube on the open bottom edge", () => {
     const board = new Board(solid(5, 5), "bottom");
     const roads = roadsFor(board);
     const target = 4 * 5 + 1; // bottom row, x = 1
     const route = roads.route(target);
     expect(route[0]).toEqual(roads.entry);
-    expect(route[route.length - 1]).toEqual({ x: O + 1.5 * CS, y: roads.ring.y1 });
+    // Along the road to straight below the cube, then up until it touches the cube.
+    expect(route[route.length - 2]).toEqual({ x: O + 1.5 * CS, y: roads.ring.y1 });
+    expect(route[route.length - 1]).toEqual({ x: O + 1.5 * CS, y: O + 5.5 * CS });
   });
 
   it("drives in through cleared cells only, and parks next to the cube", () => {
@@ -53,9 +55,12 @@ describe("RoadMap", () => {
     // All edges open: a cube at the top-left corner is reached from the top or left side.
     const board = new Board(solid(6, 6), "all");
     const route = roadsFor(board).route(0);
-    const end = route[route.length - 1];
+    const road = route[route.length - 2];
     const ring = roadsFor(board).ring;
-    expect(end.x === ring.x0 || end.y === ring.y0).toBe(true);
+    expect(road.x === ring.x0 || road.y === ring.y0).toBe(true);
+    // Then it pulls up beside the cube, just outside the field.
+    const end = route[route.length - 1];
+    expect(Math.hypot(end.x - (O + 0.5 * CS), end.y - (O + 0.5 * CS))).toBe(CS);
     // It passes the bottom-left corner of the road on the way.
     expect(route).toContainEqual({ x: ring.x0, y: ring.y1 });
   });
@@ -88,11 +93,8 @@ describe("RoadMap", () => {
           for (const i of cells) expect(g.board.isOpen(i)).toBe(true);
           const last = route[route.length - 1];
           const cube = roads.center(d.cell);
-          const parkedBeside =
-            cells.length > 0
-              ? Math.hypot(last.x - cube.x, last.y - cube.y) === CS
-              : last.x === cube.x || last.y === cube.y; // on the road, straight out from the cube
-          expect(parkedBeside).toBe(true);
+          // Parked touching the cube: one cell away, inside the field or just outside its edge.
+          expect(Math.hypot(last.x - cube.x, last.y - cube.y)).toBe(CS);
           checked++;
         }
         // Trucks pick their cubes up before the next tick.
