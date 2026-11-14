@@ -244,6 +244,69 @@ export function pod(
  * A crate's number: white with a soft shadow, or dark on light colors so it
  * always stays readable.
  */
+/**
+ * A crate's truck count, styled like a modern game label: a heavy rounded face
+ * with a soft gradient fill, a crisp rounded outline in a deep shade of the
+ * crate's color, and a solid drop under it so the number looks pressed out of
+ * the crate. Light crates get dark lettering with a white edge instead.
+ * `flat` leaves out the drop and thins the outline, for small or faded crates.
+ */
+export function countLabel(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  flat = false,
+): void {
+  ctx.save();
+  ctx.font = `900 ${size}px ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  if ("letterSpacing" in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${-size * 0.02}px`;
+  const light = luminance(color) > 0.72;
+  const edge = light ? "#ffffff" : shade(color, -0.62);
+  const drop = Math.max(1.5, size * 0.08);
+  const outline = size * (flat ? 0.1 : 0.16);
+  const top = y - size * 0.42;
+  const bottom = y + size * 0.42;
+
+  // The drop: a solid copy of the outline a little lower, with a soft shadow.
+  if (!flat) {
+    ctx.save();
+    ctx.shadowColor = "rgba(40,20,5,0.35)";
+    ctx.shadowBlur = size * 0.18;
+    ctx.shadowOffsetY = size * 0.06;
+    ctx.strokeStyle = light ? shade(color, -0.2) : shade(color, -0.75);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.lineWidth = outline;
+    ctx.strokeText(text, x, y + drop);
+    ctx.fillText(text, x, y + drop);
+    ctx.restore();
+  }
+
+  // The outline.
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = outline;
+  ctx.strokeText(text, x, y);
+
+  // The face: bright on top, fading into a hint of the crate's color.
+  const fill = ctx.createLinearGradient(0, top, 0, bottom);
+  if (light) {
+    fill.addColorStop(0, shade(color, -0.5));
+    fill.addColorStop(1, shade(color, -0.72));
+  } else {
+    fill.addColorStop(0, "#ffffff");
+    fill.addColorStop(0.55, "#ffffff");
+    fill.addColorStop(1, shade(color, 0.7));
+  }
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
 export function numeral(
   ctx: CanvasRenderingContext2D,
   text: string,

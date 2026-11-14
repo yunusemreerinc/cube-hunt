@@ -7,6 +7,7 @@ import {
   badge,
   brickWall,
   car,
+  countLabel,
   cubeSprite,
   holdStripes,
   icon,
@@ -851,7 +852,7 @@ class App {
         const fw = BLOCK.w + (r.w - BLOCK.w) * t;
         const fh = BLOCK.h + (r.h - BLOCK.h) * t;
         pod(ctx, fx, fy, fw, fh, flying.color);
-        numeral(ctx, String(flying.count), fx + fw / 2, fy + fh * 0.42, 24, flying.color);
+        countLabel(ctx, String(flying.count), fx + fw / 2, fy + fh * 0.42, 25, flying.color);
         return;
       }
       if (!b) return;
@@ -867,7 +868,7 @@ class App {
       if (waiting) ctx.globalAlpha = 0.6;
       // The number pops a little each time a truck leaves.
       const bump = this.slotBump[i] ?? 0;
-      numeral(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 24 * (1 + 0.22 * bump * bump), color);
+      countLabel(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 25 * (1 + 0.22 * bump * bump), color);
       // How many of this crate's trucks are still to go.
       const start = this.startCounts.get(b.id) ?? b.count;
       const barW = r.w - 20;
@@ -893,7 +894,7 @@ class App {
         const color = this.level.picture.palette[b.color];
         if (row === 0) {
           pod(ctx, r.x, r.y, r.w, r.h, color);
-          numeral(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.44, 24, color);
+          countLabel(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.42, 25, color);
           this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
         } else {
           // Crates further back are smaller and fainter, like a stack waiting its turn.
@@ -901,7 +902,7 @@ class App {
           ctx.globalAlpha = row === 1 ? 0.55 : 0.32;
           const inset = row === 1 ? 5 : 9;
           pod(ctx, r.x + inset, r.y, r.w - inset * 2, r.h, color);
-          numeral(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.44, 19, color);
+          countLabel(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.42, 19, color, true);
           ctx.restore();
         }
       }
