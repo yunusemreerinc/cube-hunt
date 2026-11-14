@@ -205,7 +205,7 @@ describe("cubes next to the road first", () => {
     expect(b.pickTarget(0)).toBe(2); // 2 and 4 are both 1 along the road; the lower index wins
   });
 
-  it("clears row by row, each row from the middle out to the sides", () => {
+  it("takes a row from the middle out, and never makes trucks wait", () => {
     // 5 wide, 2 tall, only the bottom open; one crate of 10 trucks.
     const p: Picture = { name: "rows", width: 5, height: 2, cells: new Int16Array(10), palette: ["#000"] };
     const level: Level = { picture: p, columns: [[{ id: 0, color: 0, count: 10 }]], slotCount: 1, edges: "bottom" };
@@ -215,13 +215,10 @@ describe("cubes next to the road first", () => {
     for (let sent = g.tick(); sent.length; sent = g.tick()) claims.push(...sent.map((d) => d.cell));
     // Bottom row (cells 5..9): middle first, then out to both sides.
     expect(claims).toEqual([7, 6, 8, 5, 9]);
-    // Picking up the middle opens the cube above it, but the row above waits
-    // while bottom-row cubes are still being collected.
+    // Picking up the middle opens the cube above it, and a truck goes for it at once.
     g.collect(7);
-    expect(g.tick()).toEqual([]);
-    for (const c of [6, 8, 5, 9]) g.collect(c);
-    // Then the next row, again from the middle.
     expect(g.tick().map((d) => d.cell)).toEqual([2]);
+    expect(g.tick()).toEqual([]);
   });
 
   it("sends one truck to each reachable cube: 15 reachable cubes, 15 trucks", () => {
@@ -236,13 +233,9 @@ describe("cubes next to the road first", () => {
     expect([...sent].sort((x, y) => x - y)).toEqual(Array.from({ length: 15 }, (_, i) => 15 + i));
     expect(g.slots[0]?.count).toBe(5);
     expect(g.status).toBe("playing"); // trucks are still on their way, so not stuck
-    // The row above waits until the whole bottom row has been collected; then the
-    // remaining 5 trucks go to it, from the middle out.
+    // Each pickup opens the cube above it, and a waiting truck goes for it right away.
     g.collect(15 + 7);
+    expect(g.tick().map((d) => d.cell)).toEqual([7]);
     expect(g.tick()).toEqual([]);
-    for (let x = 0; x < 15; x++) if (x !== 7) g.collect(15 + x);
-    const next: number[] = [];
-    for (let sent = g.tick(); sent.length; sent = g.tick()) next.push(...sent.map((d) => d.cell));
-    expect(next).toEqual([7, 6, 8, 5, 9]);
   });
 });

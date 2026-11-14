@@ -10,11 +10,10 @@ export type Side = "top" | "right" | "bottom" | "left";
  * Transparent cells sealed inside the picture don't count until a truck can get
  * to them, so the rules always match where a truck can actually drive.
  *
- * Cubes touching the road go first, row by row from the middle out: each truck
- * takes the reachable cube of its color that is fewest cells in from an open
- * edge, then the one with the shortest drive along the road from the ramp (which
- * sits below the middle of the bottom edge). A color's deeper cubes wait until
- * its closer claimed cubes have been collected.
+ * Cubes touching the road go first, from the middle out: each truck takes the
+ * reachable cube of its color that is fewest cells in from an open edge, then
+ * the one with the shortest drive along the road from the ramp (which sits below
+ * the middle of the bottom edge).
  */
 export class Board {
   readonly width: number;
@@ -26,10 +25,6 @@ export class Board {
   private readonly claimed: Uint8Array;
   /** How many cubes are claimed but not yet picked up. */
   pending = 0;
-  /** Per color: how many claimed cubes are waiting at each depth (cells in from the road). */
-  private readonly pendingDepth: Map<number, number>[];
-  /** Depth of each claimed cube when it was claimed. */
-  private readonly claimDepth: Int32Array;
   /** Reachable cell indices, per color. */
   private readonly reachable: Set<number>[];
   private readonly remainingByColor: number[];
@@ -48,8 +43,6 @@ export class Board {
     this.cells = Int16Array.from(picture.cells);
     this.open = new Uint8Array(this.cells.length);
     this.claimed = new Uint8Array(this.cells.length);
-    this.claimDepth = new Int32Array(this.cells.length);
-    this.pendingDepth = picture.palette.map(() => new Map<number, number>());
     this.depth = new Int32Array(this.cells.length).fill(1 << 30);
     this.road = new Float32Array(this.cells.length).fill(Infinity);
     this.reachable = picture.palette.map(() => new Set<number>());
@@ -200,14 +193,8 @@ export class Board {
    * The next cube of `color` for a truck, or -1 if none can go now: the one fewest
    * cells in from the road, then the shortest drive from the ramp (so a row goes
    * from the middle out to the sides), then the lowest index (deterministic).
-   * Cubes of this color deeper in wait until its closer claimed cubes are
-   * collected, so each color clears row by row.
    */
   pickTarget(color: ColorId): number {
-    // Row by row: while cubes of this color closer to the road are still waiting to
-    // be collected, don't send trucks deeper in.
-    let limit = Infinity;
-    for (const [d, n] of this.pendingDepth[color] ?? []) if (n > 0 && d < limit) limit = d;
     let best = -1;
     let bestDepth = Infinity;
     let bestRoad = Infinity;
@@ -215,7 +202,6 @@ export class Board {
       this.wayIn(i);
       const d = this.wayDepth;
       const r = this.wayRoad;
-      if (d > limit) continue;
       if (Board.better(d, r, bestDepth, bestRoad) || (d === bestDepth && r === bestRoad && i < best)) {
         bestDepth = d;
         bestRoad = r;
@@ -290,10 +276,6 @@ export class Board {
   claim(i: number): void {
     const c = this.cells[i];
     if (c === EMPTY || !this.reachable[c].has(i)) throw new Error(`cell ${i} is not reachable`);
-    this.wayIn(i);
-    this.claimDepth[i] = this.wayDepth;
-    const byDepth = this.pendingDepth[c];
-    byDepth.set(this.wayDepth, (byDepth.get(this.wayDepth) ?? 0) + 1);
     this.reachable[c].delete(i);
     this.claimed[i] = 1;
     this.pending++;
@@ -310,10 +292,6 @@ export class Board {
     if (this.claimed[i] === 1) {
       this.claimed[i] = 0;
       this.pending--;
-      const byDepth = this.pendingDepth[c];
-      const left = (byDepth.get(this.claimDepth[i]) ?? 1) - 1;
-      if (left > 0) byDepth.set(this.claimDepth[i], left);
-      else byDepth.delete(this.claimDepth[i]);
     } else if (!this.reachable[c].has(i)) {
       throw new Error(`cell ${i} is not reachable`);
     }

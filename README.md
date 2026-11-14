@@ -44,23 +44,19 @@ Rubber Duck, Ice Cream and Watermelon.
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
 - Tapping a crate moves it into a free **slot**. Its trucks drive up out of the
-  ramp one by one and follow the road around the field. Each turns in at an open
+  ramp all at once and follow the road around the field. Each turns in at an open
   side, drives through cleared space to one reachable cube of its color, loads it
-  and carries it back down the ramp. Trucks wait their turn: they queue behind
-  each other, give way when merging or joining the road, and wait in the tunnel
-  until their ramp lane is clear. The road has a lane each way, so trucks pass
-  side by side; inside the picture there is one lane, so an empty truck that
-  meets a loaded one head-on backs up to let it out.
+  and carries it back down the ramp. Trucks never wait for each other: they
+  drive straight through any truck in their way. On the road they keep to a lane
+  each way.
 - A cube is **reachable** when a truck can drive up to it: it touches an open edge
   of the field, or cleared space that connects to one. A cube only counts as
   cleared once its truck has actually picked it up, so crates never send trucks
   to cubes that are still walled in.
-- Cubes are cleared row by row from the middle out: each truck takes the
+- Cubes next to the road go first, from the middle out: each truck takes the
   reachable cube of its color that is fewest cells in from the road (with no
   brick wall in the way), then the one with the shortest drive from the ramp, so
-  a row is taken from the middle out to both sides. A color's next row waits
-  until its trucks have collected the row before it, and trucks come up the ramp
-  in the order they were sent. A crate sends a truck to
+  a row is taken from the middle out to both sides. A crate sends a truck to
   every reachable cube at once: with 15 reachable cubes, 15 trucks go straight
   away; any more go the moment a pickup opens up a new cube. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
@@ -84,7 +80,7 @@ src/levels/
 src/view/
   draw.ts      canvas drawing helpers (tiles, labels, trucks)
   roads.ts     truck routes: road around the field, then through cleared cells
-src/main.ts    the app: layout, input, traffic, animation, overlays
+src/main.ts    the app: layout, input, animation, overlays
 vite.config.ts build settings, including the step that inlines the code into index.html
 ```
 
