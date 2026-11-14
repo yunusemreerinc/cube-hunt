@@ -175,27 +175,40 @@ describe("claimed cubes", () => {
   });
 });
 
-describe("outside-in clearing", () => {
-  it("takes cubes on the open edge before digging into the middle", () => {
-    // 9 wide, 4 tall, one color, only the bottom open. Clear the middle of the
-    // bottom row and dig a shaft up the middle column; the far ends of the
-    // bottom row are still on the edge, so they go before the shaft's walls.
+describe("nearest cube first", () => {
+  it("takes a second-row cube above a cleared gap before a first-row cube further along the road", () => {
+    // 7 wide, 2 tall, one color, only the bottom open. Clear the middle three
+    // cubes of the bottom row.
+    const p: Picture = { name: "two-rows", width: 7, height: 2, cells: new Int16Array(14), palette: ["#000"] };
+    const b = new Board(p, "bottom");
+    for (const x of [3, 2, 4]) b.eat(7 + x);
+    // The second-row cube above the middle of the gap is 1 cell's drive away;
+    // the first-row cubes left at (1,1) and (5,1) are 2 along the road.
+    expect(b.pickTarget(0)).toBe(3);
+    b.eat(3);
+    // Now the nearest are 2 away: (2,0) through the gap, and (1,1) on the first
+    // row. On a tie the one closer to the edge goes first: the first-row cube.
+    expect(b.pickTarget(0)).toBe(7 + 1);
+  });
+
+  it("measures the real drive: road plus cells inside, not a straight line", () => {
+    // 9 wide, 4 tall. Clear the middle of the bottom row and dig a shaft up the
+    // middle column.
     const p: Picture = { name: "wide", width: 9, height: 4, cells: new Int16Array(36), palette: ["#000"] };
     const b = new Board(p, "bottom");
     for (const x of [4, 3, 5, 2, 6]) b.eat(27 + x);
     b.eat(22);
     b.eat(13);
-    // A straight-line "nearest the ramp" rule would pick the shaft wall at (3,2);
-    // outside-in picks the bottom-row cube at (1,3), next to the cleared gap.
-    expect(b.pickTarget(0)).toBe(27 + 1);
+    // The shaft wall at (3,2) is 2 cells' drive away (into the gap, one up);
+    // the first-row cube at (1,3) is 3 along the road. The wall is nearer.
+    expect(b.pickTarget(0)).toBe(21);
   });
 
-  it("among cubes equally far in, takes the shortest drive from the ramp", () => {
-    // All on the bottom edge (depth 0): the one nearest the middle wins.
+  it("among equally near cubes, takes the lower index", () => {
     const p: Picture = { name: "row", width: 7, height: 1, cells: new Int16Array(7), palette: ["#000"] };
     const b = new Board(p, "bottom");
     expect(b.pickTarget(0)).toBe(3);
     b.eat(3);
-    expect(b.pickTarget(0)).toBe(2); // 2 and 4 tie on distance; the lower index wins
+    expect(b.pickTarget(0)).toBe(2); // 2 and 4 are both 1 away
   });
 });
