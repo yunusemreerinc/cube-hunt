@@ -112,7 +112,7 @@ function mushroom(): Picture {
   s.rect(8, 13, 8, 14, "K").rect(11, 13, 11, 14, "K");
   s.paint("G", (x, y) => y > 16 && y < 17.5 && Math.sin(x * 1.7) > 0, "B");
   return s.toPicture("Mushroom", {
-    B: "#a5e6f7",
+    B: "#3fa2e3",
     G: "#5cc464",
     R: "#e8424f",
     W: "#ffffff",
