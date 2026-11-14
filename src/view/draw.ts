@@ -471,57 +471,6 @@ export function roundButton(ctx: CanvasRenderingContext2D, cx: number, cy: numbe
   ctx.stroke();
 }
 
-/**
- * A slate segmented switch: the options side by side, the chosen one on a glossy
- * pill in `accent`. Returns each segment's box so the caller can make them tappable.
- */
-export function segmented(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  labels: string[],
-  active: number,
-  accent: string,
-): { x: number; y: number; w: number; h: number }[] {
-  ctx.save();
-  ctx.shadowColor = "rgba(60,35,15,0.32)";
-  ctx.shadowBlur = 8;
-  ctx.shadowOffsetY = 3;
-  const body = ctx.createLinearGradient(0, y, 0, y + h);
-  body.addColorStop(0, "#5a606c");
-  body.addColorStop(1, "#444a55");
-  ctx.fillStyle = body;
-  roundRect(ctx, x, y, w, h, h / 2);
-  ctx.fill();
-  ctx.restore();
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth = 1;
-  roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, h / 2 - 0.5);
-  ctx.stroke();
-  const pad = 3;
-  const segW = (w - pad * 2) / labels.length;
-  const boxes = labels.map((_, i) => ({ x: x + pad + i * segW, y, w: segW, h }));
-  const a = boxes[active];
-  pod(ctx, a.x, y + pad, a.w, h - pad * 2, accent, (h - pad * 2) / 2);
-  labels.forEach((label, i) => {
-    const cy = y + pad + (h - pad * 2 - Math.max(3, (h - pad * 2) * 0.1)) / 2;
-    if (i === active) {
-      countLabel(ctx, label, boxes[i].x + segW / 2, cy, 14, accent, true);
-    } else {
-      ctx.save();
-      labelFont(ctx, 13);
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(255,255,255,0.55)";
-      ctx.fillText(label, boxes[i].x + segW / 2, cy);
-      ctx.restore();
-    }
-  });
-  return boxes;
-}
-
 /** A slate dock that holds the slots, with a soft shadow and a highlight along its top edge. */
 export function dock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 20): void {
   ctx.save();
@@ -605,6 +554,52 @@ export function holdStripes(
     ctx.closePath();
     ctx.fill();
   }
+  ctx.restore();
+}
+
+/** Width of `n` play arrows drawn by speedArrows at `size`. */
+export function speedArrowsWidth(n: number, size: number): number {
+  const w = size * 0.62;
+  return w + w * 0.82 * (n - 1);
+}
+
+/**
+ * `n` solid white play arrows in a row, starting at `left` and centered on `cy`,
+ * each `size` tall: one for 1x, two for 2x, three for 3x. All the shadows go
+ * down first, so no arrow's shadow falls across another.
+ */
+export function speedArrows(ctx: CanvasRenderingContext2D, n: number, left: number, cy: number, size: number, color: string): void {
+  const h = size / 2;
+  const w = size * 0.62;
+  const step = w * 0.82;
+  const path = () => {
+    ctx.beginPath();
+    for (let k = 0; k < n; k++) {
+      const x = left + k * step;
+      ctx.moveTo(x, cy - h);
+      ctx.lineTo(x + w, cy);
+      ctx.lineTo(x, cy + h);
+      ctx.closePath();
+    }
+  };
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineWidth = size * 0.1;
+  ctx.fillStyle = ctx.strokeStyle = shade(color, -0.6);
+  ctx.globalAlpha *= 0.45;
+  ctx.filter = "blur(1px)";
+  ctx.translate(0, 1.2);
+  path();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineWidth = size * 0.1;
+  ctx.fillStyle = ctx.strokeStyle = "#fff";
+  path();
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
 }
 

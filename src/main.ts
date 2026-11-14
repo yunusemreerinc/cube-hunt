@@ -20,9 +20,10 @@ import {
   pod,
   roundButton,
   roundRect,
-  segmented,
   shade,
   socketSprite,
+  speedArrows,
+  speedArrowsWidth,
   well,
 } from "./view/draw";
 import { RoadMap, type Pt, type Ring } from "./view/roads";
@@ -693,9 +694,18 @@ class App {
     pod(ctx, 185 - chipW / 2, 38, chipW, 17, tone, 8.5);
     countLabel(ctx, difficulty, 185, 45.5, 11, tone, true);
 
-    // Speed: a segmented switch; tap a speed to pick it.
-    const speeds = segmented(ctx, 324, 15, 86, 34, ["1x", "2x", "3x"], this.speed - 1, "#3fb6f2");
-    speeds.forEach((box, k) => this.button(box.x, box.y, box.w, box.h, () => (this.speed = k + 1)));
+    // Speed toggle: one arrow per step of speed, then the speed; each tap goes up one, 3x back to 1x.
+    const sp = { x: 326, y: 14, w: 82, h: 38 };
+    const spMid = sp.y + (sp.h - Math.max(3, sp.h * 0.1)) / 2;
+    pod(ctx, sp.x, sp.y, sp.w, sp.h, "#3fb6f2", 16);
+    // Arrows and label centered together as one group.
+    const spText = `${this.speed}x`;
+    const arrowsW = speedArrowsWidth(this.speed, 13);
+    const textW = labelWidth(ctx, spText, 17);
+    const spLeft = sp.x + (sp.w - (arrowsW + 6 + textW)) / 2;
+    speedArrows(ctx, this.speed, spLeft, spMid, 13, "#3fb6f2");
+    countLabel(ctx, spText, spLeft + arrowsW + 6 + textW / 2, spMid, 17, "#3fb6f2");
+    this.button(sp.x, sp.y, sp.w, sp.h, () => (this.speed = (this.speed % 3) + 1));
   }
 
   private drawBoard(): void {
