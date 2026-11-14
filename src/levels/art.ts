@@ -342,15 +342,16 @@ export interface LevelSpec extends BuildOptions {
 export function builtInLevels(): LevelSpec[] {
   return [
     { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
-    { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 11 },
-    { picture: sunset(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.6, seed: 38 },
+    { picture: mushroom(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.85, seed: 36 },
+    // Sunset's color bands block each other, so it needs a few more big crates to stay Hard, not Expert.
+    { picture: sunset(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.6, seed: 12, bigChance: 0.25 },
     { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 1 },
-    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 1 },
+    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 3 },
     // A second run of levels, again from easier to harder.
-    { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 75 },
-    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 7 },
-    { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 20 },
+    { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 6 },
+    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 4 },
+    { picture: duck(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.7, seed: 3 },
     { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 3 },
-    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 3 },
+    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 2 },
   ];
 }
