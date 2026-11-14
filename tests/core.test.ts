@@ -205,6 +205,25 @@ describe("cubes next to the road first", () => {
     expect(b.pickTarget(0)).toBe(2); // 2 and 4 are both 1 along the road; the lower index wins
   });
 
+  it("open on every side: rows near the ramp go before cubes on the far edges", () => {
+    // Like the bottom of the strawberry: a pointed tip, with the widest rows
+    // touching the left and right edges higher up.
+    //   X X X X X
+    //   X X X X X   <- (0,1) and (4,1) touch the side roads
+    //   . X X X .   <- (1,2) and (3,2) are reached through the empty corners
+    //   . . X . .
+    const E = EMPTY;
+    const cells = Int16Array.from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, E, 0, 0, 0, E, E, E, 0, E, E]);
+    const p: Picture = { name: "tip", width: 5, height: 4, cells, palette: ["#000"] };
+    const level: Level = { picture: p, columns: [[{ id: 0, color: 0, count: 4 }]], slotCount: 1, edges: "all" };
+    const g = new Game(level);
+    g.tap(0);
+    const claims: number[] = [];
+    for (let sent = g.tick(); sent.length; sent = g.tick()) claims.push(...sent.map((d) => d.cell));
+    // The tip, then the second row, and only then the side of the next row up.
+    expect(claims).toEqual([17, 11, 13, 5]);
+  });
+
   it("takes a row from the middle out, and never makes trucks wait", () => {
     // 5 wide, 2 tall, only the bottom open; one crate of 10 trucks.
     const p: Picture = { name: "rows", width: 5, height: 2, cells: new Int16Array(10), palette: ["#000"] };

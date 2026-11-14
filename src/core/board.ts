@@ -10,10 +10,11 @@ export type Side = "top" | "right" | "bottom" | "left";
  * Transparent cells sealed inside the picture don't count until a truck can get
  * to them, so the rules always match where a truck can actually drive.
  *
- * Cubes touching the road go first, from the middle out: each truck takes the
- * reachable cube of its color that is fewest cells in from an open edge, then
- * the one with the shortest drive along the road from the ramp (which sits below
- * the middle of the bottom edge).
+ * Cubes are taken row by row from the ramp side, each row from the middle out:
+ * each truck takes the reachable cube of its color in the lowest row (the ramp
+ * sits below the middle of the bottom edge), then the one with the shortest
+ * drive from the ramp. So on a level open on every side, cubes on the far left
+ * and right edges wait for the rows below them.
  */
 export class Board {
   readonly width: number;
@@ -190,21 +191,23 @@ export class Board {
   }
 
   /**
-   * The next cube of `color` for a truck, or -1 if none can go now: the one fewest
-   * cells in from the road, then the shortest drive from the ramp (so a row goes
-   * from the middle out to the sides), then the lowest index (deterministic).
+   * The next cube of `color` for a truck, or -1 if none can go now: the one in
+   * the lowest row (nearest the ramp side), then the shortest drive from the ramp
+   * (so a row goes from the middle out to the sides), then the lowest index
+   * (deterministic).
    */
   pickTarget(color: ColorId): number {
     let best = -1;
-    let bestDepth = Infinity;
-    let bestRoad = Infinity;
+    let bestRow = Infinity;
+    let bestDrive = Infinity;
     for (const i of this.reachable[color]) {
+      const row = this.height - 1 - Math.floor(i / this.width); // 0 = bottom row
+      if (row > bestRow) continue;
       this.wayIn(i);
-      const d = this.wayDepth;
-      const r = this.wayRoad;
-      if (Board.better(d, r, bestDepth, bestRoad) || (d === bestDepth && r === bestRoad && i < best)) {
-        bestDepth = d;
-        bestRoad = r;
+      const drive = this.wayDepth + this.wayRoad;
+      if (row < bestRow || drive < bestDrive || (drive === bestDrive && i < best)) {
+        bestRow = row;
+        bestDrive = drive;
         best = i;
       }
     }
