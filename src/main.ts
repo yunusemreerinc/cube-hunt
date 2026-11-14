@@ -3,7 +3,20 @@ import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel } from "./levels/generator";
 import { pictureFromFile } from "./levels/image";
-import { car, cubeSprite, label, roundRect, shade, socketSprite, tile } from "./view/draw";
+import {
+  car,
+  cubeSprite,
+  label,
+  luminance,
+  numeral,
+  pill,
+  pod,
+  roundRect,
+  shade,
+  socketSprite,
+  tile,
+  well,
+} from "./view/draw";
 import { RoadMap, type Pt } from "./view/roads";
 
 // ---- Layout (design units; the canvas is scaled to fit the window) ----
@@ -138,6 +151,8 @@ class App {
   private overlayDelay = 0;
   private message = "";
   private scale = 1;
+  /** How many trucks each crate (by block id) held when it entered a slot, for its progress bar. */
+  private startCounts = new Map<number, number>();
   /** Pre-drawn cube images, keyed by color and size in device pixels. */
   private sprites = new Map<string, HTMLCanvasElement>();
 
@@ -189,6 +204,7 @@ class App {
     );
     this.shown = Int16Array.from(this.level.picture.cells);
     this.sprites.clear();
+    this.startCounts.clear();
     this.cars = [];
     this.tunnelQueues = RAMP_LANES.map(() => []);
     this.nextCarId = 0;
@@ -290,6 +306,7 @@ class App {
     const from = this.blockRect(col, 0);
     const color = this.level.picture.palette[block.color];
     const count = block.count;
+    this.startCounts.set(block.id, count);
     const slot = this.game.tap(col);
     if (slot >= 0) {
       this.flyers.push({ slot, fromX: from.x, fromY: from.y, t: 0, color, count });
@@ -770,44 +787,40 @@ class App {
     this.game.slots.forEach((b, i) => {
       const r = this.slotRect(i);
       const x = r.x + dx;
-      ctx.fillStyle = "rgba(110,70,30,0.18)";
-      roundRect(ctx, x, r.y + 6, r.w, r.h, 14);
-      ctx.fill();
+      well(ctx, x, r.y, r.w, r.h);
       const flying = this.flyers.find((f) => f.slot === i);
-      if (!b && !flying) {
-        ctx.strokeStyle = "rgba(110,70,30,0.35)";
-        ctx.setLineDash([6, 5]);
-        ctx.lineWidth = 2;
-        roundRect(ctx, x + 2, r.y + 2, r.w - 4, r.h - 4, 12);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        return;
-      }
       if (flying) {
         const t = 1 - (1 - flying.t) ** 3;
         const fx = flying.fromX + (x - flying.fromX) * t;
         const fy = flying.fromY + (r.y - flying.fromY) * t;
-        tile(ctx, fx, fy, r.w, r.h, flying.color, 7, 14);
-        label(ctx, String(flying.count), fx + r.w / 2, fy + r.h / 2 - 3, 24, flying.color);
+        const fw = BLOCK.w + (r.w - BLOCK.w) * t;
+        const fh = BLOCK.h + (r.h - BLOCK.h) * t;
+        pod(ctx, fx, fy, fw, fh, flying.color);
+        numeral(ctx, String(flying.count), fx + fw / 2, fy + fh * 0.42, 24, flying.color);
         return;
       }
       if (!b) return;
       const color = this.level.picture.palette[b.color];
       const waiting = !this.game.slotCanEat(i);
-      ctx.globalAlpha = waiting ? 0.55 : 1;
-      // handle on top, like a little crate lid
-      ctx.fillStyle = shade(color, -0.35);
-      roundRect(ctx, x + r.w * 0.25, r.y - 7, r.w * 0.5, 12, 5);
-      ctx.fill();
-      tile(ctx, x, r.y, r.w, r.h, color, 7, 14);
-      label(ctx, String(b.count), x + r.w / 2, r.y + r.h / 2 - 3, 24, color);
-      ctx.globalAlpha = 1;
+      ctx.save();
       if (waiting) {
-        ctx.font = `800 11px ui-rounded, system-ui, sans-serif`;
-        ctx.fillStyle = "#6b4523";
-        ctx.textAlign = "center";
-        ctx.fillText("blocked", x + r.w / 2, r.y + r.h + 14);
+        ctx.globalAlpha = 0.5;
+        ctx.filter = "saturate(0.45)";
       }
+      pod(ctx, x, r.y, r.w, r.h, color);
+      numeral(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 24, color);
+      // How many of this crate's trucks are still to go.
+      const start = this.startCounts.get(b.id) ?? b.count;
+      const barW = r.w - 20;
+      const barY = r.y + r.h * 0.72;
+      ctx.fillStyle = "rgba(0,0,0,0.18)";
+      roundRect(ctx, x + 10, barY, barW, 4, 2);
+      ctx.fill();
+      ctx.fillStyle = luminanceFill(color);
+      roundRect(ctx, x + 10, barY, Math.max(4, barW * (b.count / start)), 4, 2);
+      ctx.fill();
+      ctx.restore();
+      if (waiting) pill(ctx, "blocked", x + r.w / 2, r.y + r.h + 9);
     });
   }
 
@@ -820,14 +833,17 @@ class App {
         const r = this.blockRect(c, row);
         const color = this.level.picture.palette[b.color];
         if (row === 0) {
-          tile(ctx, r.x, r.y, r.w, r.h, color, 7, 12);
-          label(ctx, String(b.count), r.x + r.w / 2, r.y + r.h / 2 - 3, 24, color);
+          pod(ctx, r.x, r.y, r.w, r.h, color);
+          numeral(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.44, 24, color);
           this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
         } else {
-          ctx.globalAlpha = row === 1 ? 0.5 : 0.3;
-          tile(ctx, r.x + 4, r.y, r.w - 8, r.h, color, 6, 12);
-          label(ctx, String(b.count), r.x + r.w / 2, r.y + r.h / 2 - 3, 20, color);
-          ctx.globalAlpha = 1;
+          // Crates further back are smaller and fainter, like a stack waiting its turn.
+          ctx.save();
+          ctx.globalAlpha = row === 1 ? 0.55 : 0.32;
+          const inset = row === 1 ? 5 : 9;
+          pod(ctx, r.x + inset, r.y, r.w - inset * 2, r.h, color);
+          numeral(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.44, 19, color);
+          ctx.restore();
         }
       }
       const hidden = col.length - TRAY_ROWS;
@@ -917,6 +933,11 @@ class App {
       this.button(bx, by, bw, 52, a.fn);
     });
   }
+}
+
+/** A progress-bar color that shows up on the crate: white, or dark on light crates. */
+function luminanceFill(color: string): string {
+  return luminance(color) > 0.72 ? shade(color, -0.55) : "rgba(255,255,255,0.9)";
 }
 
 /** Rotates `from` toward `to` by at most `maxStep` radians, taking the short way round. */
