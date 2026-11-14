@@ -240,16 +240,19 @@ function cactus(): Picture {
 }
 
 function iceCream(): Picture {
-  const s = new Sketch(20, 26, "N");
-  // Waffle cone.
-  s.triangle(4, 13, 16, 13, 10, 25.5, "C");
-  s.paint("c", (x, y) => Math.floor(x + y) % 4 === 0 || Math.floor(x - y + 40) % 4 === 0, "C");
-  // Mint scoop with drips, a strawberry scoop on top, sprinkles and a cherry.
-  s.circle(10, 11.5, 5.6, "M");
-  s.rect(5, 13, 5, 15, "M").rect(14, 13, 14, 16, "M");
-  s.circle(10, 6.6, 4.6, "P");
-  for (const [x, y] of [[8, 5], [11, 4], [12, 7], [8, 8], [10, 6]]) s.set(x, y, "W");
-  s.circle(10, 1.6, 1.3, "R");
+  const s = new Sketch(22, 28, "N");
+  // A wide waffle cone with a criss-cross pattern.
+  s.triangle(3.5, 15.5, 18.5, 15.5, 11, 27.8, "C");
+  s.paint("c", (x, y) => Math.floor(x + y) % 4 === 0 || Math.floor(x - y + 60) % 4 === 0, "C");
+  // Mint scoop, wider than the cone, melting over its rim in separate drips.
+  s.ellipse(11, 13.4, 8.4, 3.3, "M");
+  for (const [x, len] of [[5, 2], [9, 3], [13, 1], [16, 2]]) s.rect(x, 16, x, 16 + len, "M");
+  // A round strawberry scoop on top, with sprinkles.
+  s.circle(11, 8.4, 5.3, "P");
+  for (const [x, y] of [[8, 6], [12, 5], [14, 8], [9, 10], [11, 8], [7, 9], [13, 11]]) s.set(x, y, "W");
+  // A cherry with a little stem.
+  s.circle(11.5, 2.4, 1.7, "R");
+  s.set(12, 0, "c").set(13, 0, "c");
   return s.toPicture("Ice Cream", {
     N: "#2e3a6e",
     C: "#f0b264",
