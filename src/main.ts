@@ -19,23 +19,21 @@ import {
   socketSprite,
   well,
 } from "./view/draw";
-import { RoadMap, type Pt } from "./view/roads";
+import { RoadMap, type Pt, type Ring } from "./view/roads";
 
 // ---- Layout (design units; the canvas is scaled to fit the window) ----
 const W = 420;
 const H = 900;
 const BOARD = { x: 16, y: 64, w: 388, h: 388 };
-/** Road around the field: its center line sits ROAD_INSET inside the board frame. */
-const ROAD_INSET = 13;
 const ROAD_W = 15;
-const RING = {
-  x0: BOARD.x + ROAD_INSET,
-  y0: BOARD.y + ROAD_INSET,
-  x1: BOARD.x + BOARD.w - ROAD_INSET,
-  y1: BOARD.y + BOARD.h - ROAD_INSET,
-};
-/** Gap between the board frame and the cube field, leaving room for the road. */
+/** Smallest gap between the board frame and the cube field, leaving room for the road. */
 const FIELD_INSET = 27;
+/**
+ * The road's center line runs this far outside the cube field on every side, so
+ * it hugs the picture whatever its shape (on a square picture it sits 13 px
+ * inside the board frame).
+ */
+const ROAD_GAP = 14;
 /** Trucks keep this far right of the route so traffic in and out doesn't overlap. */
 const LANE = 2.5;
 /** A truck stops when another is within this distance ahead of it (center to center, at scale 1). */
@@ -136,6 +134,8 @@ class App {
   private winRate = 1;
   private game!: Game;
   private roads!: RoadMap;
+  /** Center line of the road around this level's field. */
+  private ring!: Ring;
   /** Cells as currently drawn; a cube leaves when its truck picks it up, not when the truck is sent. */
   private shown!: Int16Array;
   private cars: Car[] = [];
@@ -196,14 +196,15 @@ class App {
     this.game = new Game(this.level);
     const cs = this.cellSize();
     const p = this.level.picture;
-    this.roads = new RoadMap(
-      this.game.board,
-      BOARD.x + (BOARD.w - cs * p.width) / 2,
-      BOARD.y + (BOARD.h - cs * p.height) / 2,
-      cs,
-      RING,
-      { x: TUNNEL.x, y: RING.y1 },
-    );
+    const fx = BOARD.x + (BOARD.w - cs * p.width) / 2;
+    const fy = BOARD.y + (BOARD.h - cs * p.height) / 2;
+    this.ring = {
+      x0: fx - ROAD_GAP,
+      y0: fy - ROAD_GAP,
+      x1: fx + cs * p.width + ROAD_GAP,
+      y1: fy + cs * p.height + ROAD_GAP,
+    };
+    this.roads = new RoadMap(this.game.board, fx, fy, cs, this.ring, { x: TUNNEL.x, y: this.ring.y1 });
     this.shown = Int16Array.from(this.level.picture.cells);
     this.sprites.clear();
     this.startCounts.clear();
@@ -333,7 +334,7 @@ class App {
           let route: Pt[] = [];
           let bestScore = Infinity;
           RAMP_LANES.forEach((dx, k) => {
-            const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: RING.y1 });
+            const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: this.ring.y1 });
             const score = plan.cost + this.tunnelQueues[k].length * FOLLOW_GAP * 1.5;
             if (score < bestScore) {
               bestScore = score;
@@ -664,7 +665,8 @@ class App {
     ctx.lineJoin = "round";
     ctx.strokeStyle = ROAD_COLOR;
     ctx.lineWidth = ROAD_W;
-    roundRect(ctx, RING.x0, RING.y0, RING.x1 - RING.x0, RING.y1 - RING.y0, 8);
+    const ring = this.ring;
+    roundRect(ctx, ring.x0, ring.y0, ring.x1 - ring.x0, ring.y1 - ring.y0, 8);
     ctx.stroke();
     ctx.strokeStyle = "rgba(255,255,255,0.7)";
     ctx.lineWidth = 1.2;
@@ -739,7 +741,7 @@ class App {
     // A wide driveway from the road down to the ramp, one lane per ramp lane.
     const apron = RAMP_LANES[RAMP_LANES.length - 1] + 14;
     ctx.fillStyle = ROAD_COLOR;
-    ctx.fillRect(TUNNEL.x - apron, RING.y1, apron * 2, y - RING.y1 + 2);
+    ctx.fillRect(TUNNEL.x - apron, this.ring.y1, apron * 2, y - this.ring.y1 + 2);
     const r = 12;
     ctx.fillStyle = "rgba(110,70,30,0.25)";
     roundRect(ctx, x - 4, y - 2, TUNNEL.w + 8, TUNNEL.h + 10, r + 4);
@@ -775,7 +777,7 @@ class App {
       const lx = TUNNEL.x + (RAMP_LANES[k - 1] + RAMP_LANES[k]) / 2;
       ctx.strokeStyle = "rgba(255,255,255,0.6)";
       ctx.beginPath();
-      ctx.moveTo(lx, RING.y1 + ROAD_W / 2 + 2);
+      ctx.moveTo(lx, this.ring.y1 + ROAD_W / 2 + 2);
       ctx.lineTo(lx, y - 1);
       ctx.stroke();
       ctx.strokeStyle = "rgba(255,240,200,0.35)";
