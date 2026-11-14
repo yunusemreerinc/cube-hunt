@@ -253,6 +253,9 @@ function labelFont(ctx: CanvasRenderingContext2D, size: number): void {
   if ("wordSpacing" in ctx) spaced.wordSpacing = `${size * 0.12}px`;
 }
 
+/** The rounded face for sentences: the labels' family, heavy but without outline or tight spacing. */
+export const BODY_FONT = `800 15px ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif`;
+
 /** How wide countLabel draws `text` at `size`, for laying out an icon beside it. */
 export function labelWidth(ctx: CanvasRenderingContext2D, text: string, size: number): number {
   ctx.save();
@@ -268,6 +271,7 @@ export function labelWidth(ctx: CanvasRenderingContext2D, text: string, size: nu
  * crate's color, and a solid drop under it so the number looks pressed out of
  * the crate. Light crates get dark lettering with a white edge instead.
  * `flat` leaves out the drop and thins the outline, for small or faded crates.
+ * With `maxWidth`, a label that would be wider shrinks to fit.
  */
 export function countLabel(
   ctx: CanvasRenderingContext2D,
@@ -277,7 +281,12 @@ export function countLabel(
   size: number,
   color: string,
   flat = false,
+  maxWidth = Infinity,
 ): void {
+  if (maxWidth < Infinity) {
+    const w = labelWidth(ctx, text, size);
+    if (w > maxWidth) size *= maxWidth / w;
+  }
   ctx.save();
   labelFont(ctx, size);
   ctx.textAlign = "center";
