@@ -12,14 +12,17 @@ import {
   dock,
   holdStripes,
   icon,
+  lane,
   type IconKind,
   BODY_FONT,
+  chip,
   labelWidth,
   luminance,
   pill,
   pod,
   roundButton,
   roundRect,
+  shelf,
   shade,
   socketSprite,
   speedArrows,
@@ -1048,6 +1051,26 @@ class App {
 
   private drawTray(): void {
     const ctx = this.ctx;
+    const cols = this.game.columns.length;
+    if (cols > 0) {
+      // A light shelf under the stacks, lined up with the slot dock above.
+      const first = this.blockRect(0, 0);
+      const last = this.blockRect(cols - 1, 0);
+      const rowsH = TRAY_ROWS * (BLOCK.h + BLOCK.gy);
+      shelf(ctx, first.x - 8, TRAY_Y - 12, last.x + last.w - first.x + 16, rowsH + 30);
+      // A soft highlight band behind the front row: these are the crates you can tap.
+      const band = ctx.createLinearGradient(0, TRAY_Y - 4, 0, TRAY_Y + BLOCK.h + 4);
+      band.addColorStop(0, "rgba(255,255,255,0)");
+      band.addColorStop(0.5, "rgba(255,255,255,0.55)");
+      band.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = band;
+      ctx.fillRect(first.x - 4, TRAY_Y - 4, last.x + last.w - first.x + 8, BLOCK.h + 8);
+      // Each column sits in its own recessed lane.
+      for (let c = 0; c < cols; c++) {
+        const r = this.blockRect(c, 0);
+        lane(ctx, r.x - 3, TRAY_Y - 5, r.w + 6, rowsH + 16);
+      }
+    }
     this.game.columns.forEach((col, c) => {
       // Crates further back are smaller and fainter, like a stack waiting its turn.
       // After a tap they rise a row in a cascade, front first: each springs up,
@@ -1083,10 +1106,11 @@ class App {
           this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
         }
       }
+      // How many more wait out of sight: a small chip at the foot of the lane.
       const hidden = col.length - TRAY_ROWS;
       if (hidden > 0) {
         const r = this.blockRect(c, TRAY_ROWS);
-        countLabel(ctx, `+${hidden} more`, r.x + r.w / 2, r.y - 2, 12, "#b5763c", true);
+        chip(ctx, `+${hidden} more`, r.x + r.w / 2, r.y + 1, "#b08960");
       }
     });
   }
