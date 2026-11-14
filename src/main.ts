@@ -1247,10 +1247,11 @@ class App {
     if (this.game.status === "won") {
       const last = !this.custom && this.levelIndex === this.specs.length - 1;
       const next = this.custom
-        ? { text: "Play again", color: "#5cc464", fn: () => this.startLevel() }
+        ? { text: "Play again", color: "#5cc464", icon: "restart" as IconKind, fn: () => this.startLevel() }
         : {
             text: last ? "Back to level 1" : "Next level",
             color: "#5cc464",
+            icon: (last ? "restart" : "next") as IconKind,
             fn: () => this.goToLevel(this.levelIndex + 1),
           };
       this.panel("Picture complete!", "Every cube was hauled away.", [next], "#5cc464");
@@ -1260,8 +1261,8 @@ class App {
         "Out of moves",
         "Every slot is waiting for a color that can't be reached.",
         [
-          ...(canSlot ? [{ text: "+1 Slot", color: "#5cc464", fn: () => this.addSlot() }] : []),
-          { text: "Retry", color: "#8f7cf0", fn: () => this.startLevel() },
+          ...(canSlot ? [{ text: "+1 Slot", color: "#5cc464", icon: "slot" as IconKind, fn: () => this.addSlot() }] : []),
+          { text: "Retry", color: "#8f7cf0", icon: "restart" as IconKind, fn: () => this.startLevel() },
         ],
         "#e8424f",
       );
@@ -1272,7 +1273,7 @@ class App {
   private panel(
     title: string,
     body: string,
-    actions: { text: string; color: string; fn: () => void }[],
+    actions: { text: string; color: string; icon: IconKind; fn: () => void }[],
     tone = "#8f7cf0",
   ): void {
     const ctx = this.ctx;
@@ -1305,8 +1306,7 @@ class App {
     actions.forEach((a, i) => {
       const bx = (W - total) / 2 + i * (bw + 16);
       const by = py + ph - 74;
-      pod(ctx, bx, by, bw, 54, a.color, 20);
-      countLabel(ctx, a.text, bx + bw / 2, by + (54 - Math.max(3, 5.4)) / 2, 19, a.color);
+      this.actionButton(bx, by, bw, 54, a.color, a.icon, a.text);
       this.button(bx, by, bw, 54, a.fn);
     });
   }
