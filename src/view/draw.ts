@@ -139,23 +139,96 @@ export function car(
   ctx.fill();
 
   if (cargo) {
-    // The cube sits proud of the bed: drop shadow, beveled sides, lighter top face.
+    // The same glossy, rounded cube as on the board, with a shine that radiates from
+    // the middle so it looks right whichever way the truck faces.
     const c = 8;
     const cx = -6.2 - c / 2;
     const cy = -c / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(cx + 0.9, cy + 0.9, c, c);
-    ctx.fillStyle = shade(color, -0.22);
-    ctx.fillRect(cx, cy, c, c);
-    ctx.fillStyle = shade(color, 0.14);
-    ctx.fillRect(cx + 1.3, cy + 1.3, c - 2.6, c - 2.6);
-    // Same highlight on every side, so it still looks right when the truck turns.
-    ctx.strokeStyle = "rgba(255,255,255,0.45)";
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(cx + 1.7, cy + 1.7, c - 3.4, c - 3.4);
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    roundRect(ctx, cx + 0.8, cy + 0.9, c, c, 2.2);
+    ctx.fill();
+    const glow = ctx.createRadialGradient(cx + c / 2, cy + c / 2, 0, cx + c / 2, cy + c / 2, c * 0.72);
+    glow.addColorStop(0, shade(color, 0.32));
+    glow.addColorStop(0.6, color);
+    glow.addColorStop(1, shade(color, -0.18));
+    ctx.fillStyle = glow;
+    roundRect(ctx, cx, cy, c, c, 2.2);
+    ctx.fill();
     ctx.strokeStyle = dark;
-    ctx.lineWidth = 0.9;
-    ctx.strokeRect(cx, cy, c, c);
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
   }
   ctx.restore();
+}
+
+/**
+ * A glossy, rounded cube drawn onto its own canvas `px` device pixels square, so
+ * the board can stamp copies instead of redrawing gradients for every cube.
+ * Layers: a darker base for depth, a face that fades from light to the full
+ * color, a soft gloss band, a small top-left highlight and a crisp edge.
+ */
+export function cubeSprite(color: string, px: number): HTMLCanvasElement {
+  const size = Math.max(4, Math.round(px));
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const g = canvas.getContext("2d")!;
+  const s = size;
+  const r = s * 0.24;
+  const depth = Math.max(1, s * 0.11);
+  const face = s - depth;
+
+  // Base, peeking out below the face.
+  g.fillStyle = shade(color, -0.34);
+  roundRect(g, 0, depth, s, face, r);
+  g.fill();
+
+  // Face: lighter at the top, a touch darker at the bottom.
+  const grad = g.createLinearGradient(0, 0, 0, face);
+  grad.addColorStop(0, shade(color, 0.24));
+  grad.addColorStop(0.55, color);
+  grad.addColorStop(1, shade(color, -0.07));
+  g.fillStyle = grad;
+  roundRect(g, 0, 0, s, face, r);
+  g.fill();
+
+  // Soft gloss band across the top.
+  const gloss = g.createLinearGradient(0, s * 0.06, 0, face * 0.5);
+  gloss.addColorStop(0, "rgba(255,255,255,0.42)");
+  gloss.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gloss;
+  roundRect(g, s * 0.13, s * 0.06, s * 0.74, face * 0.44, r * 0.7);
+  g.fill();
+
+  // Small highlight in the top-left corner.
+  g.fillStyle = "rgba(255,255,255,0.75)";
+  g.beginPath();
+  g.ellipse(s * 0.28, s * 0.22, s * 0.075, s * 0.045, -0.6, 0, Math.PI * 2);
+  g.fill();
+
+  // Crisp outline so light colors stay distinct from the board.
+  g.globalAlpha = 0.35;
+  g.strokeStyle = shade(color, -0.45);
+  g.lineWidth = Math.max(1, s * 0.03);
+  const inset = g.lineWidth / 2;
+  roundRect(g, inset, inset, s - 2 * inset, s - 2 * inset, r);
+  g.stroke();
+  g.globalAlpha = 1;
+  return canvas;
+}
+
+/** The faint rounded socket left where a cube has been taken. */
+export function socketSprite(px: number): HTMLCanvasElement {
+  const size = Math.max(4, Math.round(px));
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = size;
+  const g = canvas.getContext("2d")!;
+  const r = size * 0.24;
+  g.fillStyle = "rgba(150,120,90,0.10)";
+  roundRect(g, 0, 0, size, size, r);
+  g.fill();
+  // A slightly darker top edge reads as a shallow recess.
+  g.fillStyle = "rgba(120,90,60,0.08)";
+  roundRect(g, 0, 0, size, size * 0.3, r);
+  g.fill();
+  return canvas;
 }

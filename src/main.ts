@@ -3,7 +3,7 @@ import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel } from "./levels/generator";
 import { pictureFromFile } from "./levels/image";
-import { car, label, roundRect, shade, tile } from "./view/draw";
+import { car, cubeSprite, label, roundRect, shade, socketSprite, tile } from "./view/draw";
 import { RoadMap, type Pt } from "./view/roads";
 
 // ---- Layout (design units; the canvas is scaled to fit the window) ----
@@ -138,6 +138,8 @@ class App {
   private overlayDelay = 0;
   private message = "";
   private scale = 1;
+  /** Pre-drawn cube images, keyed by color and size in device pixels. */
+  private sprites = new Map<string, HTMLCanvasElement>();
 
   constructor() {
     this.canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -186,6 +188,7 @@ class App {
       { x: TUNNEL.x, y: RING.y1 },
     );
     this.shown = Int16Array.from(this.level.picture.cells);
+    this.sprites.clear();
     this.cars = [];
     this.tunnelQueues = RAMP_LANES.map(() => []);
     this.nextCarId = 0;
@@ -541,6 +544,7 @@ class App {
     this.canvas.width = Math.round(W * this.scale * dpr);
     this.canvas.height = Math.round(H * this.scale * dpr);
     this.ctx.setTransform(this.scale * dpr, 0, 0, this.scale * dpr, 0, 0);
+    this.sprites.clear();
   }
 
   private button(x: number, y: number, w: number, h: number, onClick: () => void): void {
@@ -647,28 +651,35 @@ class App {
 
     const cs = this.cellSize();
     this.drawWalls(cs);
-    const gap = Math.max(0.6, cs * 0.06);
+    const gap = Math.max(1, cs * 0.1);
+    const s = cs - gap;
+    // Sprites are drawn at the canvas's real pixel size so they stay sharp.
+    const px = Math.round(s * this.scale * (window.devicePixelRatio || 1));
+    const socket = this.sprite("socket", px, () => socketSprite(px));
+    const cubes = p.palette.map((color) => this.sprite(color, px, () => cubeSprite(color, px)));
     for (let i = 0; i < this.shown.length; i++) {
       const c = this.shown[i];
       const [cx, cy] = this.cellCenter(i);
       if (c === EMPTY) {
         if (p.cells[i] !== EMPTY) {
-          ctx.fillStyle = "rgba(150,120,90,0.10)";
-          ctx.fillRect(cx - cs / 2 + gap, cy - cs / 2 + gap, cs - gap * 2, cs - gap * 2);
+          const inset = s * 0.08;
+          ctx.drawImage(socket, cx - s / 2 + inset, cy - s / 2 + inset, s - 2 * inset, s - 2 * inset);
         }
         continue;
       }
-      const color = p.palette[c];
-      const x = cx - cs / 2 + gap / 2;
-      const y = cy - cs / 2 + gap / 2;
-      const s = cs - gap;
-      ctx.fillStyle = shade(color, -0.25);
-      ctx.fillRect(x, y, s, s);
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, s, s * 0.82);
-      ctx.fillStyle = "rgba(255,255,255,0.3)";
-      ctx.fillRect(x, y, s, Math.max(1, s * 0.16));
+      ctx.drawImage(cubes[c], cx - s / 2, cy - s / 2, s, s);
     }
+  }
+
+  /** A cached pre-drawn image; the cache is cleared whenever the level or screen size changes. */
+  private sprite(key: string, px: number, make: () => HTMLCanvasElement): HTMLCanvasElement {
+    const k = `${key}|${px}`;
+    let img = this.sprites.get(k);
+    if (!img) {
+      img = make();
+      this.sprites.set(k, img);
+    }
+    return img;
   }
 
   /** Thick walls on the edges trucks can't enter from; the open edge faces the tunnel. */
