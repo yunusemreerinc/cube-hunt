@@ -224,6 +224,35 @@ describe("cubes next to the road first", () => {
     expect(claims).toEqual([17, 11, 13, 5]);
   });
 
+  it("a crate isn't blocked while a truck already out will uncover its color", () => {
+    // One column, open at the bottom: blue (0) at the bottom, then an empty gap
+    // sealed in by it, then red (1), then green (2) on top.
+    const E = EMPTY;
+    const p: Picture = { name: "stack", width: 1, height: 4, cells: Int16Array.from([2, 1, E, 0]), palette: ["#00f", "#f00", "#0f0"] };
+    const level: Level = {
+      picture: p,
+      columns: [[{ id: 0, color: 1, count: 1 }], [{ id: 1, color: 0, count: 1 }], [{ id: 2, color: 2, count: 1 }]],
+      slotCount: 3,
+      edges: "bottom",
+    };
+    const g = new Game(level);
+    const red = g.tap(0);
+    const green = g.tap(2);
+    // No trucks out yet: red and green really are blocked.
+    expect(g.slotBlocked(red)).toBe(true);
+    expect(g.slotBlocked(green)).toBe(true);
+    const blue = g.tap(1);
+    expect(g.tick().map((d) => d.cell)).toEqual([3]); // a truck leaves for the blue cube
+    expect(g.slots[blue]).toBeNull();
+    // Once it collects that cube, the gap behind it opens and red can be reached,
+    // so red isn't shown as blocked. Green stays blocked: red is still in its way.
+    expect(g.slotBlocked(red)).toBe(false);
+    expect(g.slotBlocked(green)).toBe(true);
+    g.collect(3);
+    expect(g.slotCanEat(red)).toBe(true);
+    expect(g.slotBlocked(red)).toBe(false);
+  });
+
   it("lets the view hold a slot back to space out its trucks", () => {
     const p: Picture = { name: "row", width: 3, height: 1, cells: new Int16Array(3), palette: ["#000"] };
     const level: Level = { picture: p, columns: [[{ id: 0, color: 0, count: 3 }]], slotCount: 1, edges: "bottom" };

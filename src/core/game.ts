@@ -58,6 +58,15 @@ export class Game {
     return !!b && this.board.reachableCount(b.color) > 0;
   }
 
+  /**
+   * Is this slot's crate really blocked: nothing of its color reachable now, and
+   * nothing that the trucks already out will open up when they collect their cubes?
+   */
+  slotBlocked(slot: number): boolean {
+    const b = this.slots[slot];
+    return !!b && this.board.reachableCount(b.color) === 0 && !this.board.opensUp(b.color);
+  }
+
   /** Booster: one more slot. Un-sticks the game if it was stuck. */
   addSlot(): void {
     this.slots.push(null);

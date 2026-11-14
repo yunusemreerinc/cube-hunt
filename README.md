@@ -63,8 +63,10 @@ Rubber Duck, Ice Cream and Watermelon.
   any more go as soon as a pickup opens up a new cube. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
   and the field show which sides are closed.
-- A crate whose color has nothing reachable is marked **blocked**. If every slot
-  is full and every crate in them is blocked, you're out of moves.
+- A crate whose color has nothing reachable is marked **blocked**, unless a
+  truck that is already out will uncover a cube of its color when it picks up
+  its own. If every slot is full and every crate in them is blocked, you're out
+  of moves.
 - Boosters: **+1 Slot** once per level. **Your image** turns any picture into a
   level. **▶▶** switches between 1x, 2x and 3x speed.
 

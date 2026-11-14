@@ -181,6 +181,40 @@ export class Board {
     return this.reachable[color]?.size ?? 0;
   }
 
+  /**
+   * Will a cube of `color` become reachable once the trucks already sent pick up
+   * their cubes? Each claimed cube, once collected, opens its own cell and any
+   * sealed empty space behind it, exposing the cubes around them.
+   */
+  opensUp(color: ColorId): boolean {
+    if (this.pending === 0) return false;
+    const seen = new Uint8Array(this.cells.length);
+    const stack: number[] = [];
+    for (let i = 0; i < this.cells.length; i++) {
+      if (this.claimed[i] === 1) {
+        seen[i] = 1;
+        stack.push(i);
+      }
+    }
+    while (stack.length) {
+      const j = stack.pop()!;
+      for (const n of this.neighbors(j)) {
+        if (seen[n] === 1) continue;
+        const c = this.cells[n];
+        if (c === EMPTY) {
+          // Already-open space exposes nothing new; a sealed gap opens up too.
+          if (this.open[n] === 0) {
+            seen[n] = 1;
+            stack.push(n);
+          }
+        } else if (c === color && this.claimed[n] === 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** Snapshot of the reachable cells of one color. */
   reachableCells(color: ColorId): number[] {
     return [...(this.reachable[color] ?? [])];
