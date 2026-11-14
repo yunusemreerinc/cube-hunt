@@ -44,7 +44,7 @@ describe("Game", () => {
     const g = new Game(level([[{ id: 0, color: 0, count: 8 }], [{ id: 1, color: 1, count: 1 }]]));
     g.tap(0);
     g.tap(1);
-    while (g.status === "playing") g.tick();
+    while (g.status === "playing") g.step();
     expect(g.status).toBe("won");
   });
 
@@ -55,7 +55,7 @@ describe("Game", () => {
     g.addSlot();
     expect(g.status).toBe("playing");
     g.tap(0);
-    while (g.status === "playing") g.tick();
+    while (g.status === "playing") g.step();
     expect(g.status).toBe("won");
   });
 });
@@ -124,5 +124,53 @@ describe("sealed gaps", () => {
     b.eat(7); // now (1,2) is cleared, which touches the gap
     expect(b.isOpen(4)).toBe(true);
     expect(b.reachableCells(0)).toEqual(expect.arrayContaining([1, 3, 5]));
+  });
+});
+
+describe("claimed cubes", () => {
+  it("stay on the board, blocking what is behind them, until a truck picks them up", () => {
+    // 1x3 column, only the bottom open: cube 2 (bottom), then 1, then 0.
+    const p: Picture = { name: "col", width: 1, height: 3, cells: new Int16Array(3), palette: ["#000"] };
+    const level: Level = { picture: p, columns: [[{ id: 0, color: 0, count: 3 }]], slotCount: 1, edges: "bottom" };
+    const g = new Game(level);
+    g.tap(0);
+    expect(g.tick().map((d) => d.cell)).toEqual([2]);
+    // Cube 1 isn't reachable yet: cube 2 is claimed but still there.
+    expect(g.tick()).toEqual([]);
+    expect(g.board.remaining).toBe(3);
+    expect(g.status).toBe("playing"); // not stuck: a truck is still on its way
+    g.collect(2);
+    expect(g.tick().map((d) => d.cell)).toEqual([1]);
+  });
+
+  it("are never offered to a second truck when the space next to them opens", () => {
+    // 2x2, all one color, bottom open: claim both bottom cubes, then collect one.
+    const p: Picture = { name: "sq", width: 2, height: 2, cells: new Int16Array(4), palette: ["#000"] };
+    const b = new Board(p, "bottom");
+    b.claim(2);
+    b.claim(3);
+    b.eat(2); // opens (0,1), which neighbors the still-claimed cube 3
+    expect(b.reachableCells(0).sort()).toEqual([0]);
+    expect(b.isClaimed(3)).toBe(true);
+  });
+
+  it("is not declared stuck while a pickup could still open new cubes", () => {
+    // Bottom cube color 0, top cube color 1; one slot each, both filled.
+    const p: Picture = { name: "two", width: 1, height: 2, cells: Int16Array.from([1, 0]), palette: ["#000", "#fff"] };
+    const level: Level = {
+      picture: p,
+      columns: [[{ id: 0, color: 0, count: 1 }], [{ id: 1, color: 1, count: 1 }]],
+      slotCount: 2,
+      edges: "bottom",
+    };
+    const g = new Game(level);
+    g.tap(0);
+    g.tap(1);
+    g.tick(); // claims the bottom cube; the top one isn't reachable yet
+    expect(g.status).toBe("playing");
+    g.collect(1);
+    expect(g.tick().map((d) => d.cell)).toEqual([0]);
+    g.collect(0);
+    expect(g.status).toBe("won");
   });
 });

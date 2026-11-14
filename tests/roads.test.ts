@@ -93,6 +93,8 @@ describe("RoadMap", () => {
           expect(parkedBeside).toBe(true);
           checked++;
         }
+        // Trucks pick their cubes up before the next tick.
+        for (const d of sent) g.collect(d.cell);
       }
       expect(checked).toBeGreaterThan(100);
     });

@@ -46,7 +46,9 @@ npm run build      # type-check, then build the single-file game into dist/
   each other, give way when merging, and wait in the tunnel until their ramp lane
   is clear.
 - A cube is **reachable** when a truck can drive up to it: it touches an open edge
-  of the field, or cleared space that connects to one. On most levels trucks can
+  of the field, or cleared space that connects to one. A cube only counts as
+  cleared once its truck has actually picked it up, so crates never send trucks
+  to cubes that are still walled in. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
   and the field show which sides are closed.
 - A crate whose color has nothing reachable is marked **blocked**. If every slot

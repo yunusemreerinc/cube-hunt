@@ -532,6 +532,8 @@ class App {
   /** The truck lifts its cube off the board, kicking up a little dust. */
   private pickUp(c: Car): void {
     this.shown[c.cell] = EMPTY;
+    // Only now does the space open up, so trucks are never sent for cubes behind it early.
+    this.game.collect(c.cell);
     c.cargo = true;
     const cs = this.cellSize();
     for (let k = 0; k < 3; k++) {
