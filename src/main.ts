@@ -16,7 +16,6 @@ import {
   lane,
   type IconKind,
   BODY_FONT,
-  chip,
   labelWidth,
   luminance,
   pill,
@@ -1158,7 +1157,7 @@ class App {
       const left = this.trayLeft(cols);
       const width = cols * BLOCK.w + (cols - 1) * BLOCK.gx;
       const rowsH = TRAY_ROWS * (BLOCK.h + BLOCK.gy);
-      shelf(ctx, left - 8, TRAY_Y - 12, width + 16, rowsH + 30);
+      shelf(ctx, left - 8, TRAY_Y - 12, width + 16, rowsH + 16);
       // A soft highlight band behind the front row: these are the crates you can tap.
       const band = ctx.createLinearGradient(0, TRAY_Y - 4, 0, TRAY_Y + BLOCK.h + 4);
       band.addColorStop(0, "rgba(255,255,255,0)");
@@ -1170,7 +1169,7 @@ class App {
       for (let c = 0; c < cols; c++) {
         if (this.game.columns[c].length === 0) continue;
         const r = this.blockRect(c, 0);
-        lane(ctx, r.x - 3, TRAY_Y - 5, r.w + 6, rowsH + 16);
+        lane(ctx, r.x - 3, TRAY_Y - 5, r.w + 6, rowsH);
       }
     }
     this.game.columns.forEach((col, c) => {
@@ -1207,12 +1206,6 @@ class App {
           if (q > 0 && q < 1) sheen(ctx, r.x + r.w / 2 - w / 2, top, w, h, q);
           this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
         }
-      }
-      // How many more wait out of sight: a small chip at the foot of the lane.
-      const hidden = col.length - TRAY_ROWS;
-      if (hidden > 0) {
-        const r = this.blockRect(c, TRAY_ROWS);
-        chip(ctx, `+${hidden} more`, r.x + r.w / 2, r.y + 1, "#b08960");
       }
     });
   }

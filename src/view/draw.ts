@@ -508,14 +508,6 @@ export function lane(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   ctx.fill();
 }
 
-/** A small chip with a flat label, e.g. "+3 more" at the foot of a tray lane. */
-export function chip(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, tone: string): void {
-  const w = labelWidth(ctx, text, 10) + 14;
-  const h = 15;
-  pod(ctx, cx - w / 2, cy - h / 2, w, h, tone, h / 2);
-  countLabel(ctx, text, cx, cy - 0.6, 10, tone, true);
-}
-
 /** A frosted circle that holds a button's icon: a light inset with a fine bright rim. */
 export function iconChip(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
   ctx.save();
