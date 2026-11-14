@@ -26,25 +26,38 @@ import { RoadMap, type Pt, type Ring } from "./view/roads";
 const W = 420;
 const H = 900;
 const BOARD = { x: 16, y: 64, w: 388, h: 388 };
-const ROAD_W = 15;
+/** Wide enough for two trucks side by side, one each way. */
+const ROAD_W = 23;
 /** Smallest gap between the board frame and the cube field, leaving room for the road. */
-const FIELD_INSET = 31;
+const FIELD_INSET = 38;
 /**
  * The road's center line runs this far outside the cube field on every side, so
- * it hugs the picture whatever its shape (on a square picture it sits 13 px
- * inside the board frame). The brick walls fill the gap on closed sides.
+ * it hugs the picture whatever its shape. The brick walls fill the gap between
+ * the road and the field on closed sides.
  */
-const ROAD_GAP = 18;
+const ROAD_GAP = 22;
 /** Thickness of the brick walls on closed sides, between the road and the field. */
 const WALL_T = 9.5;
-/** Trucks keep this far right of the route so traffic in and out doesn't overlap. */
-const LANE = 2.5;
+/**
+ * On the road, trucks keep this far right of the route (at scale 1), so trucks
+ * going opposite ways pass side by side. Inside the picture they drive centered.
+ */
+const LANE = 5.8;
 /** A truck stops when another is within this distance ahead of it (center to center, at scale 1). */
 const FOLLOW_GAP = 25;
 /** How far to either side of its path a truck checks for traffic, at scale 1. */
 const FOLLOW_WIDTH = 4.5;
 /** Any truck closer than this in front (even off to one side) also makes a truck give way: merging. */
-const MERGE_GAP = 17;
+const MERGE_GAP = 21;
+/** Speed of a truck backing up out of a corridor, as a share of its normal speed. */
+const REVERSE_SPEED = 0.8;
+/** A truck joining the road waits while a truck on the road is this close to where it joins (scale 1). */
+const JOIN_CLEAR = 26;
+/** ...but for at most this many seconds; then it pulls out and road traffic waits for it. */
+const JOIN_PATIENCE = 0.5;
+/** Trucks coming up the driveway give way only to road trucks this close (scale 1), and only briefly, so the ramp keeps flowing. */
+const DRIVEWAY_JOIN_CLEAR = 18;
+const DRIVEWAY_PATIENCE = 0.2;
 /** Last-resort limit: seconds a truck waits without moving before squeezing past anyway. */
 const MAX_WAIT = 6;
 /** How long a truck that gave up waiting ignores traffic. */
@@ -96,6 +109,8 @@ interface Car {
   /** Seconds spent waiting for traffic, and time left squeezing past after waiting too long. */
   waited: number;
   squeeze: number;
+  /** Seconds spent waiting to join the road. */
+  joinWait: number;
 }
 interface Particle {
   x: number;
@@ -332,8 +347,13 @@ class App {
     }
 
     this.releaseFromTunnel();
-    const blocked = this.trafficAhead();
+    const { blocked, backing } = this.traffic();
+    const join = JOIN_CLEAR * this.carScale();
     for (const c of this.cars) {
+      // Time spent at a join point counts toward the joining truck's patience.
+      const joinAt = c.path[c.step];
+      const joining = joinAt && this.onRing(joinAt) && !this.onRing(c) && Math.hypot(joinAt.x - c.x, joinAt.y - c.y) < join;
+      c.joinWait = joining ? c.joinWait + sdt : 0;
       if (c.state === "load") {
         // Turn to face the cube while loading it.
         c.angle = turnToward(c.angle, Math.atan2(c.cube.y - c.y, c.cube.x - c.x), 10 * sdt);
@@ -350,6 +370,12 @@ class App {
         continue;
       }
       c.squeeze = Math.max(0, c.squeeze - sdt);
+      if (backing.has(c)) {
+        // Reverse back along the way it came, still facing forward.
+        c.waited = 0;
+        this.reverse(c, CAR_SPEED * REVERSE_SPEED * sdt);
+        continue;
+      }
       if (blocked.has(c) && c.squeeze === 0) {
         c.waited += sdt;
         if (c.waited > MAX_WAIT) {
@@ -427,6 +453,7 @@ class App {
       angle: -Math.PI / 2,
       waited: 0,
       squeeze: 0,
+      joinWait: 0,
     });
   }
 
@@ -444,20 +471,56 @@ class App {
   }
 
   /**
-   * Trucks that must stop this frame: another truck is just ahead in their lane,
-   * or close in front while merging. Oncoming trucks are in the other lane and
-   * don't count. When trucks block each other in a loop, the one sent first goes.
+   * Traffic for this frame: which trucks must stop, and which back up.
+   *
+   * - A truck stops when another is just ahead in its lane, or close in front
+   *   while merging or crossing.
+   * - On the road, oncoming trucks are in the other lane and don't count.
+   * - Off the road (inside the picture, and on the short links between the road
+   *   and the picture's edge) there is one lane. An empty truck that meets a
+   *   loaded (or loading) one head-on backs up, and so does any empty truck
+   *   queued right behind it; the loaded truck waits until the way is clear. An
+   *   empty truck about to drive in waits at the entrance while one comes out.
+   * - A truck joining the road gives way to trucks already on it, for up to
+   *   JOIN_PATIENCE seconds (from the driveway: only to very close trucks, briefly).
+   * - When trucks block each other in a loop, the one that can pass to the side
+   *   goes (not one with a truck squarely in front of it); otherwise the oldest.
    */
-  private trafficAhead(): Set<Car> {
+  private traffic(): { blocked: Set<Car>; backing: Set<Car> } {
     const s = this.carScale();
     const gap = FOLLOW_GAP * s;
     const width = FOLLOW_WIDTH * s;
     const merge = MERGE_GAP * s;
     const cars = this.cars;
     const dirs = cars.map((c) => this.heading(c));
-    const ahead = cars.map(() => new Set<number>());
+    const inside = cars.map((c) => !this.onRoad(c.x, c.y)); // one-lane parts
+    const join = JOIN_CLEAR * s;
+    const ahead = cars.map(() => new Map<number, boolean>()); // blocker -> squarely in front?
+    const backing = new Set<number>();
     for (let i = 0; i < cars.length; i++) {
       if (cars[i].state === "load") continue; // parked trucks don't need to look
+      // Joining the road: give way to road traffic near the point where it joins.
+      // Trucks coming up the driveway only give way to very close traffic, and only
+      // briefly, so the ramp keeps flowing.
+      const next = cars[i].path[cars[i].step];
+      const fromDriveway = cars[i].state === "out" && cars[i].step === 0;
+      const reachJoin = fromDriveway ? DRIVEWAY_JOIN_CLEAR * s : join;
+      if (
+        cars[i].joinWait < (fromDriveway ? DRIVEWAY_PATIENCE : JOIN_PATIENCE) &&
+        next &&
+        this.onRing(next) &&
+        !this.onRing(cars[i]) &&
+        Math.hypot(next.x - cars[i].x, next.y - cars[i].y) < join
+      ) {
+        for (let j = 0; j < cars.length; j++) {
+          if (j === i || cars[j].state === "load") continue;
+          // Only trucks driving along the road: ones turning off it into a link
+          // give way at the link's entrance instead.
+          const jNext = cars[j].path[cars[j].step];
+          if (!this.onRing(cars[j]) || !jNext || !this.onRing(jNext)) continue;
+          if (Math.hypot(cars[j].x - next.x, cars[j].y - next.y) < reachJoin) ahead[i].set(j, true);
+        }
+      }
       const fx = Math.cos(dirs[i]);
       const fy = Math.sin(dirs[i]);
       for (let j = 0; j < cars.length; j++) {
@@ -465,30 +528,68 @@ class App {
         const dx = cars[j].x - cars[i].x;
         const dy = cars[j].y - cars[i].y;
         const along = dx * fx + dy * fy;
+        const side = Math.abs(dx * fy - dy * fx);
+        const inLane = side <= width;
+        if (Math.cos(dirs[i] - dirs[j]) < -0.5) {
+          // Oncoming. On the road each keeps to its own lane.
+          if (!inside[i] && !inside[j]) continue;
+          const reach = inside[i] ? gap : gap * 1.5; // look further before driving in
+          if (along <= 0 || along > reach || !inLane) continue;
+          const iEmpty = cars[i].state === "out";
+          const jEmpty = cars[j].state === "out";
+          if (iEmpty && !jEmpty) {
+            if (inside[i]) backing.add(i); // make way for the loaded truck
+            else ahead[i].set(j, true); // wait at the entrance
+          } else if (!iEmpty && jEmpty) {
+            if (inside[j]) ahead[i].set(j, true); // wait while it backs out
+          } else {
+            ahead[i].set(j, true);
+          }
+          continue;
+        }
         if (along <= 0 || along > gap) continue;
-        if (Math.cos(dirs[i] - dirs[j]) < -0.5) continue; // oncoming, in the other lane
-        const inLane = Math.abs(dx * fy - dy * fx) <= width;
         const merging = Math.hypot(dx, dy) < merge;
-        if (inLane || merging) ahead[i].add(j);
+        if (inLane || merging) ahead[i].set(j, inLane);
+      }
+    }
+    // Empty trucks queued right behind a reversing one have to reverse too.
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (let i = 0; i < cars.length; i++) {
+        if (backing.has(i) || cars[i].state !== "out") continue;
+        for (const [j, square] of ahead[i]) {
+          if (square && backing.has(j) && Math.cos(dirs[i] - dirs[j]) > 0.5) {
+            backing.add(i);
+            changed = true;
+            break;
+          }
+        }
       }
     }
     // Each stopped truck waits for the nearest truck in its way.
     const waitsFor = new Map<number, number>();
+    const square = new Map<number, boolean>();
     ahead.forEach((set, i) => {
+      if (backing.has(i)) return;
       let best = -1;
       let bestD = Infinity;
-      for (const j of set) {
+      for (const j of set.keys()) {
         const d = Math.hypot(cars[j].x - cars[i].x, cars[j].y - cars[i].y);
         if (d < bestD) {
           bestD = d;
           best = j;
         }
       }
-      if (best >= 0) waitsFor.set(i, best);
+      if (best >= 0) {
+        waitsFor.set(i, best);
+        square.set(i, set.get(best)!);
+      }
     });
-    // A queue behind a moving or loading truck is fine. A loop (A waits for B ...
-    // waits for A) would never clear, so the oldest truck in the loop goes.
-    const out = new Set<Car>();
+    // A queue behind a moving, loading or reversing truck is fine. A loop (A waits
+    // for B ... waits for A) would never clear, so one truck in it goes: one that
+    // can pass beside its blocker if there is one, else the oldest.
+    const blocked = new Set<Car>();
+    const rank = (k: number) => (square.get(k) ? 1 : 0) * 1e9 + cars[k].id;
     for (const i of waitsFor.keys()) {
       const chain = [i];
       let j = waitsFor.get(i)!;
@@ -496,15 +597,60 @@ class App {
         chain.push(j);
         j = waitsFor.get(j)!;
       }
-      const loop = j === i;
-      const oldest = loop && chain.every((k) => cars[k].id >= cars[i].id);
-      if (!oldest) out.add(cars[i]);
+      const goes = j === i && chain.every((k) => rank(k) >= rank(i));
+      if (!goes) blocked.add(cars[i]);
     }
-    return out;
+    return { blocked, backing: new Set([...backing].map((k) => cars[k])) };
   }
 
   private carScale(): number {
-    return Math.min(1.15, Math.max(0.85, this.cellSize() / 17));
+    return Math.min(1, Math.max(0.85, this.cellSize() / 17));
+  }
+
+  /** Is this point on the two-lane road around the field (or the driveway below it)? */
+  private onRoad(x: number, y: number): boolean {
+    const r = this.ring;
+    const m = ROAD_W / 2 + 1;
+    const alongX = x > r.x0 - m && x < r.x1 + m;
+    const alongY = y > r.y0 - m && y < r.y1 + m;
+    if (alongX && (Math.abs(y - r.y0) <= m || Math.abs(y - r.y1) <= m)) return true;
+    if (alongY && (Math.abs(x - r.x0) <= m || Math.abs(x - r.x1) <= m)) return true;
+    const apron = RAMP_LANES[RAMP_LANES.length - 1] + 14;
+    return y > r.y1 && Math.abs(x - TUNNEL.x) <= apron; // the driveway down to the ramp
+  }
+
+  /** Is this point exactly on the road's center line (where routes join and leave it)? */
+  private onRing(p: Pt): boolean {
+    const r = this.ring;
+    const e = 0.5;
+    return Math.abs(p.y - r.y0) < e || Math.abs(p.y - r.y1) < e || Math.abs(p.x - r.x0) < e || Math.abs(p.x - r.x1) < e;
+  }
+
+  /** How far to keep right here: full lane on the road, none on the one-lane parts, blended at the edge. */
+  private laneShare(x: number, y: number): number {
+    const r = this.ring;
+    if (y > r.y1 && Math.abs(x - TUNNEL.x) <= RAMP_LANES[RAMP_LANES.length - 1] + 14) return 1; // driveway
+    let d = Infinity; // distance to the road's center line
+    if (x >= r.x0 && x <= r.x1) d = Math.min(d, Math.abs(y - r.y0), Math.abs(y - r.y1));
+    if (y >= r.y0 && y <= r.y1) d = Math.min(d, Math.abs(x - r.x0), Math.abs(x - r.x1));
+    return Math.max(0, Math.min(1, (ROAD_W / 2 + 2 - d) / 4));
+  }
+
+  /** Moves a truck `dist` backwards along the waypoints it has already passed. */
+  private reverse(c: Car, dist: number): void {
+    while (dist > 0 && c.step > 0) {
+      const t = c.path[c.step - 1];
+      const d = Math.hypot(t.x - c.x, t.y - c.y);
+      if (d > dist) {
+        c.x += ((t.x - c.x) / d) * dist;
+        c.y += ((t.y - c.y) / d) * dist;
+        return;
+      }
+      c.x = t.x;
+      c.y = t.y;
+      dist -= d;
+      c.step--;
+    }
   }
 
   /** Moves a truck `dist` along its waypoints, handling arrival at the end. */
@@ -595,7 +741,7 @@ class App {
       }
       fade = Math.min(1, fade);
       if (fade <= 0.02) continue; // still down in the tunnel
-      const lane = LANE * carScale;
+      const lane = LANE * carScale * this.laneShare(c.x, c.y);
       const x = c.x - Math.sin(c.angle) * lane;
       const y = c.y + Math.cos(c.angle) * lane;
       car(ctx, x, y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), fade);

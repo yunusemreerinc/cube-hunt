@@ -47,8 +47,10 @@ Rubber Duck, Ice Cream and Watermelon.
   ramp one by one and follow the road around the field. Each turns in at an open
   side, drives through cleared space to one reachable cube of its color, loads it
   and carries it back down the ramp. Trucks wait their turn: they queue behind
-  each other, give way when merging, and wait in the tunnel until their ramp lane
-  is clear.
+  each other, give way when merging or joining the road, and wait in the tunnel
+  until their ramp lane is clear. The road has a lane each way, so trucks pass
+  side by side; inside the picture there is one lane, so an empty truck that
+  meets a loaded one head-on backs up to let it out.
 - A cube is **reachable** when a truck can drive up to it: it touches an open edge
   of the field, or cleared space that connects to one. A cube only counts as
   cleared once its truck has actually picked it up, so crates never send trucks
