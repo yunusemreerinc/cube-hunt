@@ -101,11 +101,16 @@ export class RoadMap {
   }
 
   /**
-   * Route from the driveway to where a truck parks to load `target`: next to it
+   * Route from the driveway to where a truck parks to load cell `t`: next to it
    * on a cleared cell, or on the road if the cube sits on an open edge. The first
    * point is `entry`. Picks the shortest total drive.
    */
   route(t: number): Pt[] {
+    return this.routeFrom(t, this.entry).path;
+  }
+
+  /** Like `route`, starting where a given driveway lane meets the road; also returns its length. */
+  routeFrom(t: number, entry: Pt): { path: Pt[]; cost: number } {
     const board = this.board;
     const dist = new Int32Array(board.width * board.height).fill(-1);
     const toward = new Int32Array(dist.length).fill(-1); // next cell on the way to the target
@@ -118,7 +123,7 @@ export class RoadMap {
       for (const side of board.openSides(u)) {
         const road = this.roadPoint(u, side);
         const cost =
-          dist[u] * this.cs + Math.hypot(road.x - c.x, road.y - c.y) + this.roadDistance(this.entry, road);
+          dist[u] * this.cs + Math.hypot(road.x - c.x, road.y - c.y) + this.roadDistance(entry, road);
         if (!best || cost < best.cost) best = { cell: u, road, cost };
       }
       for (const n of board.neighbors(u)) {
@@ -128,9 +133,13 @@ export class RoadMap {
         queue.push(n);
       }
     }
-    if (!best) return [this.entry, this.center(t)]; // unreachable by road; shouldn't happen
-    const path = [this.entry, ...this.roadPath(this.entry, best.road)];
+    if (!best) {
+      // Unreachable by road; shouldn't happen.
+      const c = this.center(t);
+      return { path: [entry, c], cost: Math.hypot(c.x - entry.x, c.y - entry.y) };
+    }
+    const path = [entry, ...this.roadPath(entry, best.road)];
     for (let u = best.cell; u !== t; u = toward[u]) path.push(this.center(u));
-    return path;
+    return { path, cost: best.cost };
   }
 }

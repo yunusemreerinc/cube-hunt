@@ -23,8 +23,20 @@ const RING = {
 const FIELD_INSET = 27;
 /** Trucks keep this far right of the route so traffic in and out doesn't overlap. */
 const LANE = 2.5;
+/** A truck stops when another is within this distance ahead of it (center to center, at scale 1). */
+const FOLLOW_GAP = 25;
+/** How far to either side of its path a truck checks for traffic, at scale 1. */
+const FOLLOW_WIDTH = 4.5;
+/** Any truck closer than this in front (even off to one side) also makes a truck give way: merging. */
+const MERGE_GAP = 17;
+/** Last-resort limit: seconds a truck waits without moving before squeezing past anyway. */
+const MAX_WAIT = 6;
+/** How long a truck that gave up waiting ignores traffic. */
+const SQUEEZE_TIME = 0.5;
 /** Tunnel ramp the trucks drive back into with their cargo. */
 const TUNNEL = { x: W / 2, y: 496, w: 112, h: 36 };
+/** The ramp has three lanes up to the road, as offsets from its middle. */
+const RAMP_LANES = [-34, 0, 34];
 const SLOT_Y = 540;
 const SLOT_H = 66;
 const TRAY_Y = 636;
@@ -46,6 +58,8 @@ const ROAD_COLOR = "#a3968c";
 const RAMP_FADE = 28;
 
 interface Car {
+  /** Increases with each truck sent; older trucks go first when two block each other. */
+  id: number;
   x: number;
   y: number;
   /** Where it came up out of the ramp; it grows to full size as it drives away from here. */
@@ -65,6 +79,9 @@ interface Car {
   cargo: boolean;
   wait: number;
   angle: number;
+  /** Seconds spent waiting for traffic, and time left squeezing past after waiting too long. */
+  waited: number;
+  squeeze: number;
 }
 interface Particle {
   x: number;
@@ -107,6 +124,9 @@ class App {
   /** Cells as currently drawn; a cube leaves when its truck picks it up, not when the truck is sent. */
   private shown!: Int16Array;
   private cars: Car[] = [];
+  /** Per ramp lane: trucks sent out but still waiting underground for the lane to clear, oldest first. */
+  private tunnelQueues: Car[][] = RAMP_LANES.map(() => []);
+  private nextCarId = 0;
   private particles: Particle[] = [];
   private flyers: Flyer[] = [];
   private buttons: Button[] = [];
@@ -167,6 +187,8 @@ class App {
     );
     this.shown = Int16Array.from(this.level.picture.cells);
     this.cars = [];
+    this.tunnelQueues = RAMP_LANES.map(() => []);
+    this.nextCarId = 0;
     this.particles = [];
     this.flyers = [];
     this.tickAcc = 0;
@@ -283,13 +305,24 @@ class App {
       while (this.tickAcc >= TICK_MS) {
         this.tickAcc -= TICK_MS;
         for (const d of this.game.tick()) {
-          // Trucks come up out of the ramp, on the side nearest their slot.
-          const r = this.slotRect(d.slot);
-          const route = this.roads.route(d.cell);
-          const half = TUNNEL.w / 2 - 16;
-          const sx = TUNNEL.x + Math.max(-half, Math.min(half, r.x + r.w / 2 - TUNNEL.x)) + (Math.random() - 0.5) * 8;
+          // Each truck takes the ramp lane with the shortest drive, counting the trucks
+          // already waiting for it; any queue waits out of sight in the tunnel.
+          let lane = 0;
+          let route: Pt[] = [];
+          let bestScore = Infinity;
+          RAMP_LANES.forEach((dx, k) => {
+            const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: RING.y1 });
+            const score = plan.cost + this.tunnelQueues[k].length * FOLLOW_GAP * 1.5;
+            if (score < bestScore) {
+              bestScore = score;
+              lane = k;
+              route = plan.path;
+            }
+          });
+          const sx = TUNNEL.x + RAMP_LANES[lane];
           const sy = TUNNEL.y + TUNNEL.h * 0.2;
-          this.cars.push({
+          this.tunnelQueues[lane].push({
+            id: this.nextCarId++,
             x: sx,
             y: sy,
             sx,
@@ -304,6 +337,8 @@ class App {
             cargo: false,
             wait: 0,
             angle: -Math.PI / 2,
+            waited: 0,
+            squeeze: 0,
           });
         }
       }
@@ -311,6 +346,8 @@ class App {
       this.tickAcc = 0;
     }
 
+    this.releaseFromTunnel();
+    const blocked = this.trafficAhead();
     for (const c of this.cars) {
       if (c.state === "load") {
         // Turn to face the cube while loading it.
@@ -321,13 +358,23 @@ class App {
           c.state = "home";
           c.path = [
             ...c.route.slice(0, -1).reverse(),
-            { x: TUNNEL.x + (Math.random() - 0.5) * TUNNEL.w * 0.4, y: TUNNEL.y + TUNNEL.h * 0.15 },
+            { x: c.sx, y: c.sy },
           ];
           c.step = 0;
         }
         continue;
       }
-      this.drive(c, CAR_SPEED * sdt);
+      c.squeeze = Math.max(0, c.squeeze - sdt);
+      if (blocked.has(c) && c.squeeze === 0) {
+        c.waited += sdt;
+        if (c.waited > MAX_WAIT) {
+          c.squeeze = SQUEEZE_TIME;
+          c.waited = 0;
+        }
+      } else {
+        c.waited = 0;
+        this.drive(c, CAR_SPEED * sdt);
+      }
       // Steer smoothly instead of snapping to the new heading.
       const next = c.path[c.step];
       if (next && Math.hypot(next.x - c.x, next.y - c.y) > 0.5) {
@@ -347,7 +394,93 @@ class App {
     for (const f of this.flyers) f.t += dt * 5.5;
     this.flyers = this.flyers.filter((f) => f.t < 1);
 
-    if (this.game.status !== "playing" && this.cars.length === 0) this.overlayDelay += dt;
+    if (this.game.status !== "playing" && this.cars.length === 0 && this.tunnelQueues.every((q) => q.length === 0)) {
+      this.overlayDelay += dt;
+    }
+  }
+
+  /** The way a truck is going: toward its next waypoint, or the way it faces when stopped. */
+  private heading(c: Car): number {
+    const next = c.state === "load" ? undefined : c.path[c.step];
+    if (next && Math.hypot(next.x - c.x, next.y - c.y) > 0.5) return Math.atan2(next.y - c.y, next.x - c.x);
+    return c.angle;
+  }
+
+  /** In each ramp lane, lets the next queued truck come up once the one before it has moved on. */
+  private releaseFromTunnel(): void {
+    const room = FOLLOW_GAP * this.carScale();
+    for (const queue of this.tunnelQueues) {
+      const next = queue[0];
+      if (!next) continue;
+      const clear = !this.cars.some(
+        (o) => o.state === "out" && o.step === 0 && Math.hypot(o.x - next.sx, o.y - next.sy) < room,
+      );
+      if (clear) this.cars.push(queue.shift()!);
+    }
+  }
+
+  /**
+   * Trucks that must stop this frame: another truck is just ahead in their lane,
+   * or close in front while merging. Oncoming trucks are in the other lane and
+   * don't count. When trucks block each other in a loop, the one sent first goes.
+   */
+  private trafficAhead(): Set<Car> {
+    const s = this.carScale();
+    const gap = FOLLOW_GAP * s;
+    const width = FOLLOW_WIDTH * s;
+    const merge = MERGE_GAP * s;
+    const cars = this.cars;
+    const dirs = cars.map((c) => this.heading(c));
+    const ahead = cars.map(() => new Set<number>());
+    for (let i = 0; i < cars.length; i++) {
+      if (cars[i].state === "load") continue; // parked trucks don't need to look
+      const fx = Math.cos(dirs[i]);
+      const fy = Math.sin(dirs[i]);
+      for (let j = 0; j < cars.length; j++) {
+        if (i === j) continue;
+        const dx = cars[j].x - cars[i].x;
+        const dy = cars[j].y - cars[i].y;
+        const along = dx * fx + dy * fy;
+        if (along <= 0 || along > gap) continue;
+        if (Math.cos(dirs[i] - dirs[j]) < -0.5) continue; // oncoming, in the other lane
+        const inLane = Math.abs(dx * fy - dy * fx) <= width;
+        const merging = Math.hypot(dx, dy) < merge;
+        if (inLane || merging) ahead[i].add(j);
+      }
+    }
+    // Each stopped truck waits for the nearest truck in its way.
+    const waitsFor = new Map<number, number>();
+    ahead.forEach((set, i) => {
+      let best = -1;
+      let bestD = Infinity;
+      for (const j of set) {
+        const d = Math.hypot(cars[j].x - cars[i].x, cars[j].y - cars[i].y);
+        if (d < bestD) {
+          bestD = d;
+          best = j;
+        }
+      }
+      if (best >= 0) waitsFor.set(i, best);
+    });
+    // A queue behind a moving or loading truck is fine. A loop (A waits for B ...
+    // waits for A) would never clear, so the oldest truck in the loop goes.
+    const out = new Set<Car>();
+    for (const i of waitsFor.keys()) {
+      const chain = [i];
+      let j = waitsFor.get(i)!;
+      while (waitsFor.has(j) && !chain.includes(j) && chain.length < cars.length) {
+        chain.push(j);
+        j = waitsFor.get(j)!;
+      }
+      const loop = j === i;
+      const oldest = loop && chain.every((k) => cars[k].id >= cars[i].id);
+      if (!oldest) out.add(cars[i]);
+    }
+    return out;
+  }
+
+  private carScale(): number {
+    return Math.min(1.15, Math.max(0.85, this.cellSize() / 17));
   }
 
   /** Moves a truck `dist` along its waypoints, handling arrival at the end. */
@@ -424,7 +557,7 @@ class App {
     this.drawSlots();
     this.drawTray();
     this.drawBottomBar();
-    const carScale = Math.min(1.15, Math.max(0.85, this.cellSize() / 17));
+    const carScale = this.carScale();
     for (const c of this.cars) {
       // Trucks grow as they climb out of the ramp, and shrink as they roll back down it.
       let fade = 1;
@@ -434,10 +567,11 @@ class App {
         fade = Math.hypot(end.x - c.x, end.y - c.y) / RAMP_FADE;
       }
       fade = Math.min(1, fade);
+      if (fade <= 0.02) continue; // still down in the tunnel
       const lane = LANE * carScale;
       const x = c.x - Math.sin(c.angle) * lane;
       const y = c.y + Math.cos(c.angle) * lane;
-      car(ctx, x, y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), 0.35 + 0.65 * fade);
+      car(ctx, x, y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), fade);
     }
     for (const p of this.particles) {
       ctx.globalAlpha = Math.min(1, p.life * 3);
@@ -568,9 +702,10 @@ class App {
     const ctx = this.ctx;
     const x = TUNNEL.x - TUNNEL.w / 2;
     const y = TUNNEL.y - TUNNEL.h / 2;
-    // Driveway from the road down to the ramp.
+    // A wide driveway from the road down to the ramp, one lane per ramp lane.
+    const apron = RAMP_LANES[RAMP_LANES.length - 1] + 14;
     ctx.fillStyle = ROAD_COLOR;
-    ctx.fillRect(TUNNEL.x - 11, RING.y1, 22, y - RING.y1 + 2);
+    ctx.fillRect(TUNNEL.x - apron, RING.y1, apron * 2, y - RING.y1 + 2);
     const r = 12;
     ctx.fillStyle = "rgba(110,70,30,0.25)";
     roundRect(ctx, x - 4, y - 2, TUNNEL.w + 8, TUNNEL.h + 10, r + 4);
@@ -599,14 +734,22 @@ class App {
     ctx.fillStyle = g;
     roundRect(ctx, x, y, TUNNEL.w, TUNNEL.h, r);
     ctx.fill();
-    // Lane markings leading in.
-    ctx.strokeStyle = "rgba(255,240,200,0.35)";
-    ctx.lineWidth = 2;
+    // Lane markings between the ramp lanes, continuing up the driveway.
+    ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 5]);
-    ctx.beginPath();
-    ctx.moveTo(TUNNEL.x, y + 4);
-    ctx.lineTo(TUNNEL.x, y + TUNNEL.h - 6);
-    ctx.stroke();
+    for (let k = 1; k < RAMP_LANES.length; k++) {
+      const lx = TUNNEL.x + (RAMP_LANES[k - 1] + RAMP_LANES[k]) / 2;
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.beginPath();
+      ctx.moveTo(lx, RING.y1 + ROAD_W / 2 + 2);
+      ctx.lineTo(lx, y - 1);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,240,200,0.35)";
+      ctx.beginPath();
+      ctx.moveTo(lx, y + 4);
+      ctx.lineTo(lx, y + TUNNEL.h - 6);
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
   }
 

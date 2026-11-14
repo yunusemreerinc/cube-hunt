@@ -42,7 +42,9 @@ npm run build      # type-check, then build the single-file game into dist/
 - Tapping a crate moves it into a free **slot**. Its trucks drive up out of the
   ramp one by one and follow the road around the field. Each turns in at an open
   side, drives through cleared space to one reachable cube of its color, loads it
-  and carries it back down the ramp.
+  and carries it back down the ramp. Trucks wait their turn: they queue behind
+  each other, give way when merging, and wait in the tunnel until their ramp lane
+  is clear.
 - A cube is **reachable** when a truck can drive up to it: it touches an open edge
   of the field, or cleared space that connects to one. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
@@ -66,7 +68,7 @@ src/levels/
 src/view/
   draw.ts      canvas drawing helpers (tiles, labels, trucks)
   roads.ts     truck routes: road around the field, then through cleared cells
-src/main.ts    the app: layout, input, animation, overlays
+src/main.ts    the app: layout, input, traffic, animation, overlays
 vite.config.ts build settings, including the step that inlines the code into index.html
 ```
 
@@ -94,5 +96,5 @@ Truck totals always match the picture exactly, and the tests check this.
 - More boosters: pick any crate from the tray, a cannon that clears a color, undo.
 - Level select, saved progress, stars for finishing without boosters.
 - A hand-made level editor, and more and larger pictures.
-- Sound, haptics, and trucks that queue politely instead of driving through each other.
+- Sound and haptics.
 - If it's fun: port `src/core` and `src/levels` to C# for a Unity mobile build.
