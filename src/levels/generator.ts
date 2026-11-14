@@ -13,6 +13,8 @@ export interface GenOptions {
   edges?: OpenEdges;
   minBlock?: number;
   maxBlock?: number;
+  /** Share of crates that are big (bigMin..maxBlock); the rest are small (minBlock..smallMax). */
+  bigChance?: number;
 }
 
 /**
@@ -47,13 +49,27 @@ export function shuffled<T>(items: T[], rng: () => number): T[] {
   return out;
 }
 
-function splitCount(n: number, min: number, max: number, rng: () => number): number[] {
+/** Crate sizes for one color: mostly small (min..smallMax), now and then a big one (bigMin..max). */
+interface CrateSizes {
+  min: number;
+  smallMax: number;
+  bigMin: number;
+  max: number;
+  bigChance: number;
+}
+
+function splitCount(n: number, sz: CrateSizes, rng: () => number): number[] {
   const out: number[] = [];
   let rem = n;
   while (rem > 0) {
     let s: number;
-    if (rem <= max) s = rem;
-    else s = min + Math.floor(rng() * (Math.min(max, rem - min) - min + 1));
+    if (rem <= sz.smallMax) s = rem;
+    else {
+      const big = rng() < sz.bigChance && rem >= sz.bigMin + sz.min;
+      const lo = big ? sz.bigMin : sz.min;
+      const hi = Math.min(big ? sz.max : sz.smallMax, rem - sz.min);
+      s = lo + Math.floor(rng() * (hi - lo + 1));
+    }
     out.push(s);
     rem -= s;
   }
@@ -65,8 +81,17 @@ export function generateLevel(picture: Picture, opts: GenOptions): Level {
   const rng = mulberry32(opts.seed);
   const columns = opts.columns ?? 5;
   const total = picture.cells.reduce((n, c) => n + (c === EMPTY ? 0 : 1), 0);
-  const minBlock = opts.minBlock ?? Math.max(4, Math.round(total / 90));
-  const maxBlock = opts.maxBlock ?? Math.max(minBlock + 6, Math.min(80, Math.round(total / 14)));
+  // Most crates are small; only a few are big. Sizes scale with the picture.
+  const min = opts.minBlock ?? Math.max(6, Math.round(total / 150));
+  const smallMax = Math.max(min + 8, Math.round(total / 55));
+  const bigMin = Math.max(smallMax + 10, Math.round(total / 32));
+  const sizes: CrateSizes = {
+    min,
+    smallMax,
+    bigMin,
+    max: opts.maxBlock ?? Math.max(bigMin + 6, Math.min(80, Math.round(total / 16))),
+    bigChance: opts.bigChance ?? 0.15,
+  };
 
   const edges = opts.edges ?? "all";
   const layers = peelLayers(picture, edges);
@@ -86,7 +111,7 @@ export function generateLevel(picture: Picture, opts: GenOptions): Level {
     if (cells.length === 0) return;
     cells.sort((a, b) => layers[a] - layers[b]);
     let offset = 0;
-    for (const size of splitCount(cells.length, minBlock, maxBlock, rng)) {
+    for (const size of splitCount(cells.length, sizes, rng)) {
       // A block is "due" when its first cells open up.
       const time = layers[cells[offset]];
       pending.push({ block: { id: id++, color, count: size }, time });

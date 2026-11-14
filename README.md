@@ -98,7 +98,8 @@ speed toggle simple and lets the solver run thousands of games in milliseconds.
 1. Peel the picture one ring at a time from the open edges to find when each cube
    becomes reachable.
 2. Cut each color's cubes into crates, ordered roughly by when they open up.
-   `shuffle` adds noise to that order.
+   Most crates are small (about 8 to 25 trucks on a typical level); only now
+   and then is one big (about 40 to 80). `shuffle` adds noise to the order.
 3. Deal the crates into 5 columns, earliest at the front. All randomness comes
    from a seeded generator, so a level is identical in every browser.
 4. Generate up to 16 candidate trays. Drop any that the greedy solver can't win, so
