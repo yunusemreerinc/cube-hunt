@@ -419,14 +419,15 @@ class App {
 
   /** Puts a truck for this dispatch in the tunnel, in the ramp lane that suits its route best. */
   private sendTruck(d: Dispatch): void {
-    // Each truck takes the ramp lane with the shortest drive, counting the trucks
-    // already waiting for it; any queue waits out of sight in the tunnel.
+    // Each truck takes the ramp lane with the shortest drive (left-side cubes the
+    // left lane, and so on), so trucks fan out from the middle without crossing
+    // each other's paths; any queue waits out of sight in the tunnel.
     let lane = 0;
     let route: Pt[] = [];
     let bestScore = Infinity;
     RAMP_LANES.forEach((dx, k) => {
       const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: this.ring.y1 });
-      const score = plan.cost + this.tunnelQueues[k].length * FOLLOW_GAP * 1.5;
+      const score = plan.cost;
       if (score < bestScore) {
         bestScore = score;
         lane = k;
@@ -457,16 +458,26 @@ class App {
     });
   }
 
-  /** In each ramp lane, lets the next queued truck come up once the one before it has moved on. */
+  /**
+   * Lets queued trucks come up the ramp in the order they were sent (so a row's
+   * middle cubes are reached first), each once its lane is clear of the truck
+   * before it. A later truck never jumps ahead of an earlier one.
+   */
   private releaseFromTunnel(): void {
     const room = FOLLOW_GAP * this.carScale();
-    for (const queue of this.tunnelQueues) {
-      const next = queue[0];
-      if (!next) continue;
+    for (;;) {
+      let lane = -1;
+      for (let k = 0; k < this.tunnelQueues.length; k++) {
+        const head = this.tunnelQueues[k][0];
+        if (head && (lane < 0 || head.id < this.tunnelQueues[lane][0].id)) lane = k;
+      }
+      if (lane < 0) return;
+      const next = this.tunnelQueues[lane][0];
       const clear = !this.cars.some(
         (o) => o.state === "out" && o.step === 0 && Math.hypot(o.x - next.sx, o.y - next.sy) < room,
       );
-      if (clear) this.cars.push(queue.shift()!);
+      if (!clear) return;
+      this.cars.push(this.tunnelQueues[lane].shift()!);
     }
   }
 
