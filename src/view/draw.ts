@@ -244,8 +244,26 @@ export function pod(
  * A crate's number: white with a soft shadow, or dark on light colors so it
  * always stays readable.
  */
+/** The heavy rounded face used by countLabel, with its slightly tight spacing. */
+function labelFont(ctx: CanvasRenderingContext2D, size: number): void {
+  ctx.font = `900 ${size}px ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif`;
+  // Tight letters, but a little extra room between words so labels stay easy to read.
+  const spaced = ctx as CanvasRenderingContext2D & { letterSpacing?: string; wordSpacing?: string };
+  if ("letterSpacing" in ctx) spaced.letterSpacing = `${-size * 0.02}px`;
+  if ("wordSpacing" in ctx) spaced.wordSpacing = `${size * 0.12}px`;
+}
+
+/** How wide countLabel draws `text` at `size`, for laying out an icon beside it. */
+export function labelWidth(ctx: CanvasRenderingContext2D, text: string, size: number): number {
+  ctx.save();
+  labelFont(ctx, size);
+  const w = ctx.measureText(text).width;
+  ctx.restore();
+  return w;
+}
+
 /**
- * A crate's truck count, styled like a modern game label: a heavy rounded face
+ * A crate's truck count (and button labels to match), styled like a modern game label: a heavy rounded face
  * with a soft gradient fill, a crisp rounded outline in a deep shade of the
  * crate's color, and a solid drop under it so the number looks pressed out of
  * the crate. Light crates get dark lettering with a white edge instead.
@@ -261,11 +279,10 @@ export function countLabel(
   flat = false,
 ): void {
   ctx.save();
-  ctx.font = `900 ${size}px ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif`;
+  labelFont(ctx, size);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
-  if ("letterSpacing" in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${-size * 0.02}px`;
   const light = luminance(color) > 0.72;
   const edge = light ? "#ffffff" : shade(color, -0.62);
   const drop = Math.max(1.5, size * 0.08);
@@ -303,30 +320,6 @@ export function countLabel(
     fill.addColorStop(1, shade(color, 0.7));
   }
   ctx.fillStyle = fill;
-  ctx.fillText(text, x, y);
-  ctx.restore();
-}
-
-export function numeral(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  size: number,
-  color: string,
-): void {
-  ctx.save();
-  ctx.font = `800 ${size}px "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  if (luminance(color) > 0.72) {
-    ctx.fillStyle = shade(color, -0.65);
-  } else {
-    ctx.shadowColor = shade(color, -0.6);
-    ctx.shadowBlur = 3;
-    ctx.shadowOffsetY = 1.5;
-    ctx.fillStyle = "#ffffff";
-  }
   ctx.fillText(text, x, y);
   ctx.restore();
 }
