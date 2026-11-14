@@ -14,7 +14,6 @@ import {
   type IconKind,
   labelWidth,
   luminance,
-  numeral,
   pill,
   pod,
   roundRect,
@@ -690,7 +689,7 @@ class App {
     // Speed toggle
     pod(ctx, 330, 14, 76, 38, "#3fb6f2", 16);
     icon(ctx, "fast", 353, 31, 18, "#3fb6f2");
-    numeral(ctx, `${this.speed}x`, 384, 31, 17, "#3fb6f2");
+    countLabel(ctx, `${this.speed}x`, 384, 31, 17, "#3fb6f2");
     this.button(330, 14, 76, 38, () => (this.speed = (this.speed % 3) + 1));
   }
 
@@ -1010,7 +1009,7 @@ class App {
       const bx = (W - total) / 2 + i * (bw + 16);
       const by = py + ph - 74;
       pod(ctx, bx, by, bw, 54, a.color, 20);
-      numeral(ctx, a.text, bx + bw / 2, by + (54 - Math.max(3, 5.4)) / 2, 19, a.color);
+      countLabel(ctx, a.text, bx + bw / 2, by + (54 - Math.max(3, 5.4)) / 2, 19, a.color);
       this.button(bx, by, bw, 54, a.fn);
     });
   }

@@ -324,30 +324,6 @@ export function countLabel(
   ctx.restore();
 }
 
-export function numeral(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  size: number,
-  color: string,
-): void {
-  ctx.save();
-  ctx.font = `800 ${size}px "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  if (luminance(color) > 0.72) {
-    ctx.fillStyle = shade(color, -0.65);
-  } else {
-    ctx.shadowColor = shade(color, -0.6);
-    ctx.shadowBlur = 3;
-    ctx.shadowOffsetY = 1.5;
-    ctx.fillStyle = "#ffffff";
-  }
-  ctx.fillText(text, x, y);
-  ctx.restore();
-}
-
 /** A soft recessed well: where an empty slot waits for a crate. */
 export function well(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 14): void {
   ctx.fillStyle = "rgba(110,70,30,0.13)";
