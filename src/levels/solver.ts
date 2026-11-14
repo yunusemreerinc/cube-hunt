@@ -26,7 +26,7 @@ export function solveGreedy(level: Level, maxTicks = 200_000): SolveResult {
       taps++;
     }
     if (g.status !== "playing") break;
-    const sent = g.tick();
+    const sent = g.step();
     ticks++;
     if (sent.length === 0 && g.status === "playing") {
       // Nothing is eating: we have to tap something, even a blocked color.
@@ -75,7 +75,7 @@ export function randomWinRate(level: Level, games = 24, seed = 1): number {
         g.tap(cols[Math.floor(rng() * cols.length)]);
       }
       if (g.status !== "playing") break;
-      g.tick();
+      g.step();
     }
     if (g.status === "won") wins++;
   }

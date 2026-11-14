@@ -16,9 +16,14 @@ export class Board {
   readonly cells: Int16Array;
   /** 1 for empty cells connected to an open edge. */
   private readonly open: Uint8Array;
+  /** 1 for cubes a truck has been sent for but hasn't picked up yet. */
+  private readonly claimed: Uint8Array;
+  /** How many cubes are claimed but not yet picked up. */
+  pending = 0;
   /** Reachable cell indices, per color. */
   private readonly reachable: Set<number>[];
   private readonly remainingByColor: number[];
+  /** Cubes still on the board, including claimed ones not yet picked up. */
   remaining = 0;
   /** Point (in cell units) where the trucks' tunnel is; cubes nearest to it go first. */
   readonly tunnelX: number;
@@ -31,6 +36,7 @@ export class Board {
     this.height = picture.height;
     this.cells = Int16Array.from(picture.cells);
     this.open = new Uint8Array(this.cells.length);
+    this.claimed = new Uint8Array(this.cells.length);
     this.tunnelX = this.width / 2;
     this.tunnelY = this.height + 2;
     this.reachable = picture.palette.map(() => new Set<number>());
@@ -91,7 +97,8 @@ export class Board {
       for (const n of this.neighbors(j)) {
         const c = this.cells[n];
         if (c !== EMPTY) {
-          this.reachable[c].add(n);
+          // A claimed cube already has a truck coming for it; don't offer it again.
+          if (this.claimed[n] === 0) this.reachable[c].add(n);
         } else if (this.open[n] === 0) {
           this.open[n] = 1;
           stack.push(n);
@@ -129,10 +136,32 @@ export class Board {
     return best;
   }
 
+  /**
+   * A truck has been sent for this cube: no other truck may take it, but it stays
+   * on the board, still blocking the cubes behind it, until `eat` collects it.
+   */
+  claim(i: number): void {
+    const c = this.cells[i];
+    if (c === EMPTY || !this.reachable[c].has(i)) throw new Error(`cell ${i} is not reachable`);
+    this.reachable[c].delete(i);
+    this.claimed[i] = 1;
+    this.pending++;
+  }
+
+  isClaimed(i: number): boolean {
+    return this.claimed[i] === 1;
+  }
+
+  /** Removes a cube (claimed, or reachable and taken directly), opening the space behind it. */
   eat(i: number): void {
     const c = this.cells[i];
     if (c === EMPTY) throw new Error(`cell ${i} is already empty`);
-    if (!this.reachable[c].has(i)) throw new Error(`cell ${i} is not reachable`);
+    if (this.claimed[i] === 1) {
+      this.claimed[i] = 0;
+      this.pending--;
+    } else if (!this.reachable[c].has(i)) {
+      throw new Error(`cell ${i} is not reachable`);
+    }
     this.cells[i] = EMPTY;
     this.reachable[c].delete(i);
     this.remaining--;

@@ -13,7 +13,9 @@ export interface Dispatch {
 /**
  * Game rules, independent of rendering and timing. The view calls `tap()` on
  * player input and `tick()` on a timer; each tick every slot sends at most one
- * truck, which removes one reachable cell of its color.
+ * truck, which claims one reachable cube of its color. The cube stays on the
+ * board, still blocking the cubes behind it, until the view calls `collect()`
+ * when the truck actually picks it up. `step()` does both at once.
  */
 export class Game {
   readonly level: Level;
@@ -70,7 +72,7 @@ export class Game {
       if (!b) continue;
       const cell = this.board.pickTarget(b.color);
       if (cell < 0) continue;
-      this.board.eat(cell);
+      this.board.claim(cell);
       b.count--;
       out.push({ slot: s, cell, color: b.color });
       if (b.count === 0) this.slots[s] = null;
@@ -79,9 +81,26 @@ export class Game {
     return out;
   }
 
-  /** Stuck = every slot is taken and none of them can eat. */
+  /** A truck has picked up its claimed cube: it leaves the board and opens the space behind it. */
+  collect(cell: number): void {
+    this.board.eat(cell);
+    this.updateStatus();
+  }
+
+  /** One tick with every truck picking up its cube at once. Used by the solver and tests. */
+  step(): Dispatch[] {
+    const sent = this.tick();
+    for (const d of sent) this.board.eat(d.cell);
+    this.updateStatus();
+    return sent;
+  }
+
+  /**
+   * Stuck = every slot is taken, none of them can eat, and no truck is still on
+   * its way (a pickup could open up new cubes).
+   */
   isStuck(): boolean {
-    if (this.hasFreeSlot()) return false;
+    if (this.hasFreeSlot() || this.board.pending > 0) return false;
     for (let s = 0; s < this.slots.length; s++) if (this.slotCanEat(s)) return false;
     return true;
   }
