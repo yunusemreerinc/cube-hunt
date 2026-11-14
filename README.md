@@ -52,7 +52,10 @@ Rubber Duck, Ice Cream and Watermelon.
 - A cube is **reachable** when a truck can drive up to it: it touches an open edge
   of the field, or cleared space that connects to one. A cube only counts as
   cleared once its truck has actually picked it up, so crates never send trucks
-  to cubes that are still walled in. On most levels trucks can
+  to cubes that are still walled in.
+- Trucks clear the picture from the outside in: each takes the reachable cube of
+  its color that is fewest cells in from an open edge, then the one with the
+  shortest drive from the ramp. So the picture wears away in even layers. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
   and the field show which sides are closed.
 - A crate whose color has nothing reachable is marked **blocked**. If every slot

@@ -23,7 +23,7 @@ describe("Board", () => {
     const b = new Board(ring());
     expect(b.reachableCount(0)).toBe(8);
     expect(b.reachableCount(1)).toBe(0);
-    b.eat(b.pickTarget(0)); // nearest to the tunnel = bottom middle
+    b.eat(b.pickTarget(0)); // on the edge and nearest the ramp = bottom middle
     expect(b.reachableCount(1)).toBe(1);
   });
 
@@ -172,5 +172,30 @@ describe("claimed cubes", () => {
     expect(g.tick().map((d) => d.cell)).toEqual([0]);
     g.collect(0);
     expect(g.status).toBe("won");
+  });
+});
+
+describe("outside-in clearing", () => {
+  it("takes cubes on the open edge before digging into the middle", () => {
+    // 9 wide, 4 tall, one color, only the bottom open. Clear the middle of the
+    // bottom row and dig a shaft up the middle column; the far ends of the
+    // bottom row are still on the edge, so they go before the shaft's walls.
+    const p: Picture = { name: "wide", width: 9, height: 4, cells: new Int16Array(36), palette: ["#000"] };
+    const b = new Board(p, "bottom");
+    for (const x of [4, 3, 5, 2, 6]) b.eat(27 + x);
+    b.eat(22);
+    b.eat(13);
+    // A straight-line "nearest the ramp" rule would pick the shaft wall at (3,2);
+    // outside-in picks the bottom-row cube at (1,3), next to the cleared gap.
+    expect(b.pickTarget(0)).toBe(27 + 1);
+  });
+
+  it("among cubes equally far in, takes the shortest drive from the ramp", () => {
+    // All on the bottom edge (depth 0): the one nearest the middle wins.
+    const p: Picture = { name: "row", width: 7, height: 1, cells: new Int16Array(7), palette: ["#000"] };
+    const b = new Board(p, "bottom");
+    expect(b.pickTarget(0)).toBe(3);
+    b.eat(3);
+    expect(b.pickTarget(0)).toBe(2); // 2 and 4 tie on distance; the lower index wins
   });
 });
