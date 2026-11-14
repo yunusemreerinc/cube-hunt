@@ -197,6 +197,8 @@ class App {
   private slotLand: number[] = new Array(MAX_SLOTS).fill(0);
   /** Per tray column: seconds since its crates started rising (Infinity when settled). */
   private trayRise: number[] = [];
+  /** Each tray column's current left edge, gliding toward where it belongs. */
+  private colX: number[] = [];
   private buttons: Button[] = [];
   private speed = 1;
   private slotBoostUsed = false;
@@ -270,6 +272,8 @@ class App {
     this.slotBump.fill(0);
     this.slotLand.fill(0);
     this.trayRise = [];
+    this.colX = [];
+    this.colX = this.game.columns.map((_, c) => this.columnTargetX(c));
     this.slotBoostUsed = false;
     this.overlayDelay = 0;
   }
@@ -328,11 +332,27 @@ class App {
     return { x: x0 + i * (w + gap), y: SLOT_Y, w, h: SLOT_H };
   }
 
+  /** Left edge of a tray of `n` columns, centered on the screen. */
+  private trayLeft(n: number): number {
+    return (W - (n * BLOCK.w + (n - 1) * BLOCK.gx)) / 2;
+  }
+
+  /**
+   * Where a column belongs: the columns that still hold crates are centered
+   * together, so when one runs out the rest close up around the middle. An
+   * empty column keeps its last place (nothing is drawn there).
+   */
+  private columnTargetX(col: number): number {
+    const cols = this.game.columns;
+    if (cols[col].length === 0) return this.colX[col] ?? this.trayLeft(cols.length) + col * (BLOCK.w + BLOCK.gx);
+    const live = cols.flatMap((c, i) => (c.length > 0 ? [i] : []));
+    return this.trayLeft(live.length) + live.indexOf(col) * (BLOCK.w + BLOCK.gx);
+  }
+
+  /** A crate's box in the tray; columns glide to their places when the layout changes. */
   private blockRect(col: number, row: number): { x: number; y: number; w: number; h: number } {
-    const cols = this.game.columns.length;
-    const x0 = (W - (cols * BLOCK.w + (cols - 1) * BLOCK.gx)) / 2;
     return {
-      x: x0 + col * (BLOCK.w + BLOCK.gx),
+      x: this.colX[col] ?? this.columnTargetX(col),
       y: TRAY_Y + row * (BLOCK.h + BLOCK.gy),
       w: BLOCK.w,
       h: BLOCK.h,
@@ -453,6 +473,13 @@ class App {
     this.leavers = this.leavers.filter((l) => l.t < 1 && !this.game.slots[l.slot] && !this.flyers.some((f) => f.slot === l.slot));
     for (let k = 0; k < MAX_SLOTS; k++) this.slotLand[k] = Math.max(0, this.slotLand[k] - dt / LAND_TIME);
     this.trayRise = this.trayRise.map((v) => (v ?? Infinity) + dt);
+    // Columns glide to their places, e.g. closing up when one runs out of crates.
+    const glide = 1 - Math.exp(-dt * 12);
+    this.colX = this.game.columns.map((_, c) => {
+      const target = this.columnTargetX(c);
+      const x = this.colX[c] ?? target;
+      return Math.abs(target - x) < 0.1 ? target : x + (target - x) * glide;
+    });
 
     if (this.game.status !== "playing" && this.cars.length === 0 && this.ramp.every((q) => q.length === 0)) {
       this.overlayDelay += dt;
@@ -1126,20 +1153,22 @@ class App {
     const ctx = this.ctx;
     const cols = this.game.columns.length;
     if (cols > 0) {
-      // A light shelf under the stacks, lined up with the slot dock above.
-      const first = this.blockRect(0, 0);
-      const last = this.blockRect(cols - 1, 0);
+      // A light shelf under the stacks, lined up with the slot dock above. It
+      // keeps its full width while the columns on it close up.
+      const left = this.trayLeft(cols);
+      const width = cols * BLOCK.w + (cols - 1) * BLOCK.gx;
       const rowsH = TRAY_ROWS * (BLOCK.h + BLOCK.gy);
-      shelf(ctx, first.x - 8, TRAY_Y - 12, last.x + last.w - first.x + 16, rowsH + 30);
+      shelf(ctx, left - 8, TRAY_Y - 12, width + 16, rowsH + 30);
       // A soft highlight band behind the front row: these are the crates you can tap.
       const band = ctx.createLinearGradient(0, TRAY_Y - 4, 0, TRAY_Y + BLOCK.h + 4);
       band.addColorStop(0, "rgba(255,255,255,0)");
       band.addColorStop(0.5, "rgba(255,255,255,0.55)");
       band.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = band;
-      ctx.fillRect(first.x - 4, TRAY_Y - 4, last.x + last.w - first.x + 8, BLOCK.h + 8);
-      // Each column sits in its own recessed lane.
+      ctx.fillRect(left - 4, TRAY_Y - 4, width + 8, BLOCK.h + 8);
+      // Each column that still holds crates sits in its own recessed lane.
       for (let c = 0; c < cols; c++) {
+        if (this.game.columns[c].length === 0) continue;
         const r = this.blockRect(c, 0);
         lane(ctx, r.x - 3, TRAY_Y - 5, r.w + 6, rowsH + 16);
       }
