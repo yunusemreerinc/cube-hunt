@@ -9,6 +9,7 @@ import {
   car,
   countLabel,
   cubeSprite,
+  dock,
   holdStripes,
   icon,
   type IconKind,
@@ -899,6 +900,10 @@ class App {
   private drawSlots(): void {
     const ctx = this.ctx;
     const dx = this.shake > 0 ? Math.sin(this.shake * 60) * 6 : 0;
+    // The dock that holds the slots, sized to however many there are.
+    const first = this.slotRect(0);
+    const last = this.slotRect(this.game.slots.length - 1);
+    dock(ctx, first.x - 8 + dx, first.y - 8, last.x + last.w - first.x + 16, first.h + 16);
     this.game.slots.forEach((b, i) => {
       const r = this.slotRect(i);
       const x = r.x + dx;
@@ -929,14 +934,21 @@ class App {
       const bump = this.slotBump[i] ?? 0;
       countLabel(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 25 * (1 + 0.22 * bump * bump), color);
       // How many of this crate's trucks are still to go.
+      // A slim glossy pill: a recessed track, and a bright fill with a shine on top.
       const start = this.startCounts.get(b.id) ?? b.count;
-      const barW = r.w - 20;
-      const barY = r.y + r.h * 0.72;
-      ctx.fillStyle = "rgba(0,0,0,0.18)";
-      roundRect(ctx, x + 10, barY, barW, 4, 2);
+      const barW = r.w - 22;
+      const barH = 5;
+      const barX = x + 11;
+      const barY = r.y + r.h * 0.71;
+      ctx.fillStyle = "rgba(0,0,0,0.22)";
+      roundRect(ctx, barX, barY, barW, barH, barH / 2);
       ctx.fill();
+      const fillW = Math.max(barH, barW * (b.count / start));
       ctx.fillStyle = luminanceFill(color);
-      roundRect(ctx, x + 10, barY, Math.max(4, barW * (b.count / start)), 4, 2);
+      roundRect(ctx, barX, barY, fillW, barH, barH / 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      roundRect(ctx, barX + 1, barY + 0.8, Math.max(0, fillW - 2), barH * 0.35, barH * 0.2);
       ctx.fill();
       ctx.restore();
       if (waiting) pill(ctx, "blocked", x + r.w / 2, r.y + r.h + 9);
