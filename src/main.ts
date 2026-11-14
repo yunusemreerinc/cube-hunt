@@ -442,8 +442,9 @@ class App {
     });
   }
 
+  /** Trucks shrink with the cubes, so one still fits beside each cube it parks next to (a truck is 11 wide). */
   private carScale(): number {
-    return Math.min(1, Math.max(0.85, this.cellSize() / 17));
+    return Math.min(1, Math.max(0.5, this.cellSize() / 13));
   }
 
   /** How far to keep right here: full lane on the road, none on the one-lane parts, blended at the edge. */

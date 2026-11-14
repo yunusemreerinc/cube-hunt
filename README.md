@@ -40,6 +40,7 @@ npm run build      # type-check, then build the single-file game into dist/
 There are 10 built-in levels in two runs that each go from easier to harder:
 Strawberry, Mushroom, Sunset, Ringed Planet and Cat, then Cactus, Rocket,
 Rubber Duck, Ice Cream and Watermelon.
+Pictures range from 24×24 cubes (Strawberry) to 40×40 (Ringed Planet).
 
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
@@ -113,6 +114,6 @@ level's colors are also chosen to be easy to tell apart on small cubes.
 
 - More boosters: pick any crate from the tray, a cannon that clears a color, undo.
 - Level select, saved progress, stars for finishing without boosters.
-- A hand-made level editor, and more and larger pictures.
+- A hand-made level editor, and more pictures.
 - Sound and haptics.
 - If it's fun: port `src/core` and `src/levels` to C# for a Unity mobile build.

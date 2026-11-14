@@ -1,11 +1,28 @@
 import { EMPTY, type Picture } from "../core/types";
 import type { BuildOptions } from "./generator";
 
-/** Character grid used to author pictures. '.' means transparent. */
+/**
+ * Character grid used to author pictures. '.' means transparent.
+ *
+ * Shapes are given in design units on a `dw` x `dh` canvas; the grid itself can
+ * be drawn bigger (scale `k`), so the same drawing becomes a larger, smoother
+ * picture. A cell is painted when its center falls inside a shape. Outlines are
+ * worked out on the final grid, so they stay one cube thick at any size.
+ */
 class Sketch {
   readonly g: string[][];
-  constructor(readonly w: number, readonly h: number, fill = ".") {
-    this.g = Array.from({ length: h }, () => new Array<string>(w).fill(fill));
+  /** Grid size in cells. */
+  readonly w: number;
+  readonly h: number;
+  /** Cells per design unit, across and down. */
+  private readonly kx: number;
+  private readonly ky: number;
+  constructor(dw: number, dh: number, fill = ".", k = 1) {
+    this.w = Math.round(dw * k);
+    this.h = Math.round(dh * k);
+    this.kx = this.w / dw;
+    this.ky = this.h / dh;
+    this.g = Array.from({ length: this.h }, () => new Array<string>(this.w).fill(fill));
   }
   static fromRows(rows: string[]): Sketch {
     const s = new Sketch(rows[0].length, rows.length);
@@ -15,23 +32,31 @@ class Sketch {
     });
     return s;
   }
+  /** The cell at grid position (x, y). */
   get(x: number, y: number): string | undefined {
     return this.g[y]?.[x];
   }
-  set(x: number, y: number, ch: string): this {
-    if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.g[y][x] = ch;
+  /** Fills design cell (x, y): at a larger scale that is a small block of cells. */
+  set(x: number, y: number, ch: string, only?: string): this {
+    return this.rect(x, y, x, y, ch, only);
+  }
+  /** A single cube at design cell (x, y), whatever the scale: for seeds, stars and sprinkles. */
+  dot(x: number, y: number, ch: string, only?: string): this {
+    const gx = Math.floor((x + 0.5) * this.kx);
+    const gy = Math.floor((y + 0.5) * this.ky);
+    if (gx < this.w && gy < this.h && (!only || only.includes(this.g[gy][gx]))) this.g[gy][gx] = ch;
     return this;
   }
-  /** Paints every cell whose center satisfies `test`. */
+  /** Paints every cell whose center (in design units) satisfies `test`. */
   paint(ch: string, test: (x: number, y: number) => boolean, only?: string): this {
     for (let y = 0; y < this.h; y++)
       for (let x = 0; x < this.w; x++)
-        if (test(x + 0.5, y + 0.5) && (!only || only.includes(this.g[y][x]))) this.g[y][x] = ch;
+        if (test((x + 0.5) / this.kx, (y + 0.5) / this.ky) && (!only || only.includes(this.g[y][x]))) this.g[y][x] = ch;
     return this;
   }
-  rect(x0: number, y0: number, x1: number, y1: number, ch: string): this {
-    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) this.set(x, y, ch);
-    return this;
+  /** Fills design cells x0..x1 by y0..y1 (inclusive). */
+  rect(x0: number, y0: number, x1: number, y1: number, ch: string, only?: string): this {
+    return this.paint(ch, (x, y) => x >= x0 && x < x1 + 1 && y >= y0 && y < y1 + 1, only);
   }
   ellipse(cx: number, cy: number, rx: number, ry: number, ch: string, only?: string): this {
     return this.paint(ch, (x, y) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1, only);
@@ -39,7 +64,7 @@ class Sketch {
   circle(cx: number, cy: number, r: number, ch: string, only?: string): this {
     return this.ellipse(cx, cy, r, r, ch, only);
   }
-  triangle(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, ch: string): this {
+  triangle(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, ch: string, only?: string): this {
     const sign = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) =>
       (px - rx) * (qy - ry) - (qx - rx) * (py - ry);
     return this.paint(ch, (x, y) => {
@@ -49,7 +74,7 @@ class Sketch {
       const neg = d1 < 0 || d2 < 0 || d3 < 0;
       const pos = d1 > 0 || d2 > 0 || d3 > 0;
       return !(neg && pos);
-    });
+    }, only);
   }
   /** Turns cells of `shape` that touch a `bg` cell into `ch`. */
   outline(shape: string, bg: string, ch: string): this {
@@ -80,29 +105,34 @@ class Sketch {
   }
 }
 
+/**
+ * How much bigger than its design each picture is drawn: half as big again,
+ * but never more than 40 cubes across or tall, so cubes stay big enough to see.
+ */
+function scaleFor(w: number, h: number): number {
+  return Math.min(1.5, 40 / Math.max(w, h));
+}
+
 function strawberry(): Picture {
-  return Sketch.fromRows([
-    ".......gg.......",
-    "....GGGggGGG....",
-    "...GGGGGGGGGG...",
-    "..RRGGRRRRGGRR..",
-    ".RRRRRRRRRRRRRR.",
-    ".RRYRRRRYRRRRYR.",
-    "RRRRRRYRRRRYRRRR",
-    "RRYRRRRRRRRRRRRR",
-    "RRRRRYRRRRYRRYRR",
-    ".RRRRRRRRRRRRRR.",
-    ".RYRRRRYRRRRYRR.",
-    "..RRRRRRRRRRRR..",
-    "...RRRYRRRYRR...",
-    "....RRRRRRRR....",
-    ".....RRRRRR.....",
-    "......RRRR......",
-  ]).toPicture("Strawberry", { R: "#ec4a5a", G: "#4cc46a", g: "#2b8a4a", Y: "#ffe27a" });
+  const s = new Sketch(16, 16, ".", scaleFor(16, 16));
+  // Body: round shoulders, then a smooth taper to a point at the bottom.
+  s.paint("R", (x, y) => {
+    if (y < 2.4 || y > 16) return false;
+    const half = y < 7 ? 7.8 * Math.sqrt(1 - ((y - 7) / 4.6) ** 2) : 7.8 * (1 - ((y - 7) / 9) ** 1.6);
+    return Math.abs(x - 8) <= half;
+  });
+  // Leafy crown with two leaves dipping into the fruit, and a stem.
+  s.ellipse(8, 2.6, 5.6, 1.5, "G");
+  s.triangle(2.6, 2.4, 7, 2.4, 4.8, 4.4, "G").triangle(9, 2.4, 13.4, 2.4, 11.2, 4.4, "G");
+  s.rect(7, 0, 8, 1, "g");
+  // Seeds.
+  const seeds = [[3, 5], [8, 5], [13, 5], [6, 6], [11, 6], [2, 7], [5, 8], [10, 8], [13, 8], [2, 10], [7, 10], [12, 10], [6, 12], [10, 12]];
+  for (const [x, y] of seeds) s.dot(x, y, "Y", "R");
+  return s.toPicture("Strawberry", { R: "#ec4a5a", G: "#4cc46a", g: "#2b8a4a", Y: "#ffe27a" });
 }
 
 function mushroom(): Picture {
-  const s = new Sketch(20, 20, "B");
+  const s = new Sketch(20, 20, "B", scaleFor(20, 20));
   s.rect(0, 17, 19, 19, "G");
   s.paint("R", (x, y) => y <= 11 && ((x - 10) / 8.6) ** 2 + ((y - 11) / 8.2) ** 2 <= 1);
   s.circle(6, 6, 1.6, "W", "R").circle(13.5, 5, 1.8, "W", "R").circle(10, 9, 1.2, "W", "R");
@@ -122,7 +152,7 @@ function mushroom(): Picture {
 }
 
 function sunset(): Picture {
-  const s = new Sketch(24, 24, "P");
+  const s = new Sketch(24, 24, "P", scaleFor(24, 24));
   s.rect(0, 4, 23, 7, "K").rect(0, 8, 23, 13, "O");
   s.circle(12, 13.5, 5.2, "Y");
   s.rect(0, 14, 23, 23, "S");
@@ -145,7 +175,7 @@ function sunset(): Picture {
 }
 
 function cat(): Picture {
-  const s = new Sketch(24, 24, "B");
+  const s = new Sketch(24, 24, "B", scaleFor(24, 24));
   s.triangle(3, 13, 5, 2, 12, 8, "O").triangle(21, 13, 19, 2, 12, 8, "O");
   s.triangle(5.5, 10, 6.3, 5, 9.5, 8, "P").triangle(18.5, 10, 17.7, 5, 14.5, 8, "P");
   s.ellipse(12, 14.5, 9.5, 7.6, "O");
@@ -167,12 +197,12 @@ function cat(): Picture {
 }
 
 function planet(): Picture {
-  const s = new Sketch(28, 28, "N");
+  const s = new Sketch(28, 28, "N", scaleFor(28, 28));
   const stars = [
     [2, 3], [7, 1], [12, 4], [20, 2], [25, 8], [3, 10], [1, 20], [6, 25], [14, 26], [22, 24],
     [26, 18], [9, 8], [18, 6], [24, 13], [4, 16],
   ];
-  for (const [x, y] of stars) s.set(x, y, "W");
+  for (const [x, y] of stars) s.dot(x, y, "W");
   s.circle(23, 5, 2.3, "M");
   s.circle(14, 14, 7.8, "A");
   s.paint("C", (_x, y) => Math.floor((y - 6) / 2.4) % 2 === 1, "A");
@@ -193,7 +223,7 @@ function planet(): Picture {
 }
 
 function duck(): Picture {
-  const s = new Sketch(24, 24, "B");
+  const s = new Sketch(24, 24, "B", scaleFor(24, 24));
   // Body with a perky tail, and a round head.
   s.ellipse(11, 15, 8.5, 4.6, "Y");
   s.triangle(2, 9.5, 4.5, 15, 8.5, 13, "Y");
@@ -217,7 +247,7 @@ function duck(): Picture {
 }
 
 function cactus(): Picture {
-  const s = new Sketch(22, 24, "B");
+  const s = new Sketch(22, 24, "B", scaleFor(22, 24));
   // Trunk with a rounded top, and two arms.
   s.rect(8, 6, 13, 17, "G").circle(10.5, 6, 3, "G");
   s.rect(3, 8, 5, 13, "G").circle(4, 8, 1.6, "G").rect(3, 13, 8, 15, "G");
@@ -240,7 +270,7 @@ function cactus(): Picture {
 }
 
 function iceCream(): Picture {
-  const s = new Sketch(22, 28, "N");
+  const s = new Sketch(22, 28, "N", scaleFor(22, 28));
   // A wide waffle cone with a criss-cross pattern.
   s.triangle(3.5, 15.5, 18.5, 15.5, 11, 27.8, "C");
   s.paint("c", (x, y) => Math.floor(x + y) % 4 === 0 || Math.floor(x - y + 60) % 4 === 0, "C");
@@ -249,7 +279,7 @@ function iceCream(): Picture {
   for (const [x, len] of [[5, 2], [9, 3], [13, 1], [16, 2]]) s.rect(x, 16, x, 16 + len, "M");
   // A round strawberry scoop on top, with sprinkles.
   s.circle(11, 8.4, 5.3, "P");
-  for (const [x, y] of [[8, 6], [12, 5], [14, 8], [9, 10], [11, 8], [7, 9], [13, 11]]) s.set(x, y, "W");
+  for (const [x, y] of [[8, 6], [12, 5], [14, 8], [9, 10], [11, 8], [7, 9], [13, 11]]) s.dot(x, y, "W");
   // A cherry with a little stem.
   s.circle(11.5, 2.4, 1.7, "R");
   s.set(12, 0, "c").set(13, 0, "c");
@@ -265,9 +295,9 @@ function iceCream(): Picture {
 }
 
 function rocket(): Picture {
-  const s = new Sketch(24, 28, "N");
+  const s = new Sketch(24, 28, "N", scaleFor(24, 28));
   const stars = [[2, 2], [20, 3], [5, 9], [21, 11], [3, 17], [19, 19], [6, 25], [18, 26], [10, 1], [15, 5]];
-  for (const [x, y] of stars) s.set(x, y, "Y");
+  for (const [x, y] of stars) s.dot(x, y, "Y");
   // Body: a tall rounded hull with a red nose.
   s.ellipse(12, 11.5, 4.7, 10, "W");
   s.rect(8, 12, 15, 20, "W");
@@ -289,7 +319,7 @@ function rocket(): Picture {
 }
 
 function watermelon(): Picture {
-  const s = new Sketch(26, 20, "B");
+  const s = new Sketch(26, 20, "B", scaleFor(26, 20));
   // A half slice, flat side up: dark rind, light rind, red flesh.
   const inside = (r: number) => (x: number, y: number) => y >= 3 && (x - 13) ** 2 + (y - 3) ** 2 <= r * r;
   s.paint("G", inside(12.5)).paint("L", inside(11)).paint("R", inside(9.6));
@@ -312,15 +342,15 @@ export interface LevelSpec extends BuildOptions {
 export function builtInLevels(): LevelSpec[] {
   return [
     { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
-    { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 23 },
-    { picture: sunset(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.6, seed: 49 },
+    { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 2 },
+    { picture: sunset(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.6, seed: 6 },
     { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 65 },
-    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 41 },
+    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 2 },
     // A second run of levels, again from easier to harder.
     { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 75 },
-    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 103 },
-    { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 67 },
+    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 4 },
+    { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 5 },
     { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 83 },
-    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 101 },
+    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 1 },
   ];
 }
