@@ -443,20 +443,44 @@ export function countLabel(
   ctx.restore();
 }
 
-/** A soft recessed well: where an empty slot waits for a crate. */
+/** A slate dock that holds the slots, with a soft shadow and a highlight along its top edge. */
+export function dock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 20): void {
+  ctx.save();
+  ctx.shadowColor = "rgba(60,35,15,0.3)";
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 5;
+  const body = ctx.createLinearGradient(0, y, 0, y + h);
+  body.addColorStop(0, "#666d7a");
+  body.addColorStop(1, "#4a505b");
+  ctx.fillStyle = body;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r - 0.5);
+  ctx.stroke();
+}
+
+/** An empty slot: a dark bay set into the dock, with an inner shadow and a faint dashed outline. */
 export function well(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 14): void {
-  ctx.fillStyle = "rgba(110,70,30,0.13)";
+  ctx.fillStyle = "#363b45";
   roundRect(ctx, x, y, w, h, r);
   ctx.fill();
   // Inner shadow fading down from the top edge, light catching the bottom lip.
   const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, "rgba(80,45,15,0.2)");
-  g.addColorStop(0.35, "rgba(80,45,15,0)");
+  g.addColorStop(0, "rgba(0,0,0,0.35)");
+  g.addColorStop(0.3, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   roundRect(ctx, x, y, w, h, r);
   ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
   ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  roundRect(ctx, x + 4.5, y + 4.5, w - 9, h - 9, r - 4);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
   ctx.beginPath();
   ctx.moveTo(x + r, y + h - 0.5);
   ctx.lineTo(x + w - r, y + h - 0.5);
