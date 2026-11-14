@@ -70,9 +70,16 @@ const MAX_SLOTS = 6;
 /** A tapped crate's flight into its slot: speed (1/seconds), and how high it arcs (design px). */
 const FLY_SPEED = 3.8;
 const FLY_ARC = 26;
-/** Seconds the landing bounce and glow last, and that the crates behind take to rise a row. */
+/** Seconds the landing bounce and glow last. */
 const LAND_TIME = 0.45;
-const RISE_TIME = 0.28;
+/**
+ * The stack rising after a tap: each crate takes RISE_TIME to move up a row,
+ * starting RISE_STAGGER after the one in front of it, so a wave rolls up the
+ * column; then a shine sweeps across the new front crate for SHEEN_TIME.
+ */
+const RISE_TIME = 0.32;
+const RISE_STAGGER = 0.06;
+const SHEEN_TIME = 0.4;
 /** How tray crates look at each depth: front, one back, two back, and just out of sight. */
 const TRAY_ALPHA = [1, 0.55, 0.32, 0];
 const TRAY_INSET = [0, 5, 9, 12];
@@ -180,8 +187,8 @@ class App {
   private slotBump: number[] = new Array(MAX_SLOTS).fill(0);
   /** Per slot: how much of its landing effect is left (1 just landed -> 0). */
   private slotLand: number[] = new Array(MAX_SLOTS).fill(0);
-  /** Per tray column: how far its crates still have to rise into place (1 a full row -> 0). */
-  private trayShift: number[] = [];
+  /** Per tray column: seconds since its crates started rising (Infinity when settled). */
+  private trayRise: number[] = [];
   private buttons: Button[] = [];
   private speed = 1;
   private slotBoostUsed = false;
@@ -253,7 +260,7 @@ class App {
     this.slotTimer.fill(0);
     this.slotBump.fill(0);
     this.slotLand.fill(0);
-    this.trayShift = [];
+    this.trayRise = [];
     this.slotBoostUsed = false;
     this.overlayDelay = 0;
   }
@@ -353,7 +360,7 @@ class App {
     const slot = this.game.tap(col);
     if (slot >= 0) {
       this.flyers.push({ slot, fromX: from.x, fromY: from.y, t: 0, color, count });
-      this.trayShift[col] = 1; // the crates behind move up a row
+      this.trayRise[col] = 0; // the crates behind move up a row
     }
   }
 
@@ -431,7 +438,7 @@ class App {
     }
     this.flyers = this.flyers.filter((f) => f.t < 1);
     for (let k = 0; k < MAX_SLOTS; k++) this.slotLand[k] = Math.max(0, this.slotLand[k] - dt / LAND_TIME);
-    this.trayShift = this.trayShift.map((v) => Math.max(0, (v ?? 0) - dt / RISE_TIME));
+    this.trayRise = this.trayRise.map((v) => (v ?? Infinity) + dt);
 
     if (this.game.status !== "playing" && this.cars.length === 0 && this.ramp.every((q) => q.length === 0)) {
       this.overlayDelay += dt;
@@ -1043,31 +1050,38 @@ class App {
     const ctx = this.ctx;
     this.game.columns.forEach((col, c) => {
       // Crates further back are smaller and fainter, like a stack waiting its turn.
-      // After a tap they rise a row: each is drawn at its depth plus what is left
-      // of the rise, so it slides up, brightens and widens into place, and the new
-      // front crate pops as it arrives.
-      const shift = this.trayShift[c] ?? 0;
-      const rise = shift * shift; // eased: quick at first, settling gently
+      // After a tap they rise a row in a cascade, front first: each springs up,
+      // overshooting a touch before it settles, stretching a little while it
+      // moves, and brightens and widens into its new depth. A shine then sweeps
+      // across the new front crate.
+      const since = this.trayRise[c] ?? Infinity;
       for (let row = TRAY_ROWS - 1; row >= 0; row--) {
         const b = col[row];
         if (!b) continue;
-        const depth = row + rise;
+        const p = Math.max(0, Math.min(1, (since - row * RISE_STAGGER) / RISE_TIME));
+        const rise = 1 - easeOutBack(p); // rows still to go; a little below 0 when overshooting
+        const moving = Math.sin(Math.PI * p);
+        const depth = row + Math.max(0, rise);
         const r = this.blockRect(c, row);
         const y = r.y + rise * (BLOCK.h + BLOCK.gy);
         const color = this.level.picture.palette[b.color];
         const alpha = atDepth(TRAY_ALPHA, depth);
         if (alpha <= 0.01) continue;
         const inset = atDepth(TRAY_INSET, depth);
-        const pop = row === 0 && shift > 0 ? 1 + 0.08 * Math.sin(Math.PI * (1 - shift)) : 1;
-        const w = (r.w - inset * 2) * pop;
-        const h = r.h * pop;
+        const w = (r.w - inset * 2) * (1 - 0.05 * moving);
+        const h = r.h * (1 + 0.1 * moving);
+        const top = y + r.h - h;
         ctx.save();
         ctx.globalAlpha = alpha;
-        pod(ctx, r.x + r.w / 2 - w / 2, y + r.h - h, w, h, color);
+        pod(ctx, r.x + r.w / 2 - w / 2, top, w, h, color);
         const front = depth < 0.5;
-        countLabel(ctx, String(b.count), r.x + r.w / 2, y + r.h - h + h * 0.42, atDepth(TRAY_LABEL, depth) * pop, color, !front);
+        countLabel(ctx, String(b.count), r.x + r.w / 2, top + h * 0.42, atDepth(TRAY_LABEL, depth), color, !front);
         ctx.restore();
-        if (row === 0) this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
+        if (row === 0) {
+          const q = (since - RISE_TIME) / SHEEN_TIME;
+          if (q > 0 && q < 1) sheen(ctx, r.x + r.w / 2 - w / 2, top, w, h, q);
+          this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
+        }
       }
       const hidden = col.length - TRAY_ROWS;
       if (hidden > 0) {
@@ -1184,6 +1198,33 @@ class App {
 }
 
 /** A progress-bar color that shows up on the crate: white, or dark on light crates. */
+/** Ease-out with a small overshoot past 1 before settling: a springy arrival. */
+function easeOutBack(t: number): number {
+  const c = 1.9;
+  const u = t - 1;
+  return 1 + (c + 1) * u * u * u + c * u * u;
+}
+
+/**
+ * A glossy shine sweeping across a crate's face, `q` (0..1) of the way across:
+ * a slanted white band clipped to the crate, brightest midway.
+ */
+function sheen(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, q: number): void {
+  const face = h - Math.max(3, h * 0.1);
+  ctx.save();
+  roundRect(ctx, x, y, w, face, 14);
+  ctx.clip();
+  ctx.translate(x - w * 0.3 + w * 1.6 * q, y + face / 2);
+  ctx.rotate(0.35);
+  const band = ctx.createLinearGradient(-12, 0, 12, 0);
+  band.addColorStop(0, "rgba(255,255,255,0)");
+  band.addColorStop(0.5, `rgba(255,255,255,${0.6 * Math.sin(Math.PI * q)})`);
+  band.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = band;
+  ctx.fillRect(-12, -face, 24, face * 2);
+  ctx.restore();
+}
+
 /** Reads a per-depth table (front = 0) at a fractional depth, blending between rows. */
 function atDepth(table: number[], depth: number): number {
   const d = Math.max(0, Math.min(table.length - 1, depth));
