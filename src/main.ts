@@ -12,6 +12,7 @@ import {
   holdStripes,
   icon,
   type IconKind,
+  BODY_FONT,
   labelWidth,
   luminance,
   pill,
@@ -675,16 +676,14 @@ class App {
     const title = this.custom
       ? this.level.picture.name
       : `${this.levelIndex + 1}/${this.specs.length} · ${this.level.picture.name}`;
-    ctx.font = `800 17px ui-rounded, "Nunito", system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#6b4523";
-    ctx.fillText(title, 185, 25, 190);
+    countLabel(ctx, title, 185, 24, 18, "#b5763c", false, 190);
+    // The difficulty as a small chip in a color that warms up as it gets harder.
     const r = this.winRate;
-    const difficulty = r >= 0.9 ? "Easy" : r >= 0.65 ? "Medium" : r >= 0.45 ? "Hard" : "Expert";
-    ctx.font = `700 12px ui-rounded, "Nunito", system-ui, sans-serif`;
-    ctx.fillStyle = "#9a6b3e";
-    ctx.fillText(difficulty, 185, 44);
+    const [difficulty, tone] =
+      r >= 0.9 ? ["Easy", "#5cc464"] : r >= 0.65 ? ["Medium", "#f2b43c"] : r >= 0.45 ? ["Hard", "#f0803c"] : ["Expert", "#e8424f"];
+    const chipW = labelWidth(ctx, difficulty, 11) + 18;
+    pod(ctx, 185 - chipW / 2, 38, chipW, 17, tone, 8.5);
+    countLabel(ctx, difficulty, 185, 45.5, 11, tone, true);
 
     // Speed toggle
     pod(ctx, 330, 14, 76, 38, "#3fb6f2", 16);
@@ -909,10 +908,7 @@ class App {
       const hidden = col.length - TRAY_ROWS;
       if (hidden > 0) {
         const r = this.blockRect(c, TRAY_ROWS);
-        ctx.font = `800 12px ui-rounded, system-ui, sans-serif`;
-        ctx.fillStyle = "rgba(107,69,35,0.7)";
-        ctx.textAlign = "center";
-        ctx.fillText(`+${hidden} more`, r.x + r.w / 2, r.y + 2);
+        countLabel(ctx, `+${hidden} more`, r.x + r.w / 2, r.y - 2, 12, "#b5763c", true);
       }
     });
   }
@@ -957,25 +953,35 @@ class App {
     if (this.game.status === "playing" || this.overlayDelay < 0.4) return;
     if (this.game.status === "won") {
       const last = !this.custom && this.levelIndex === this.specs.length - 1;
-      this.panel("Picture complete!", "Every cube was hauled away.", [
-        this.custom
-          ? { text: "Play again", color: "#5cc464", fn: () => this.startLevel() }
-          : {
-              text: last ? "Back to level 1" : "Next level",
-              color: "#5cc464",
-              fn: () => this.goToLevel(this.levelIndex + 1),
-            },
-      ]);
+      const next = this.custom
+        ? { text: "Play again", color: "#5cc464", fn: () => this.startLevel() }
+        : {
+            text: last ? "Back to level 1" : "Next level",
+            color: "#5cc464",
+            fn: () => this.goToLevel(this.levelIndex + 1),
+          };
+      this.panel("Picture complete!", "Every cube was hauled away.", [next], "#5cc464");
     } else {
       const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS;
-      this.panel("Out of moves", "Every slot is waiting for a color that can't be reached.", [
-        ...(canSlot ? [{ text: "+1 Slot", color: "#5cc464", fn: () => this.addSlot() }] : []),
-        { text: "Retry", color: "#8f7cf0", fn: () => this.startLevel() },
-      ]);
+      this.panel(
+        "Out of moves",
+        "Every slot is waiting for a color that can't be reached.",
+        [
+          ...(canSlot ? [{ text: "+1 Slot", color: "#5cc464", fn: () => this.addSlot() }] : []),
+          { text: "Retry", color: "#8f7cf0", fn: () => this.startLevel() },
+        ],
+        "#e8424f",
+      );
     }
   }
 
-  private panel(title: string, body: string, actions: { text: string; color: string; fn: () => void }[]): void {
+  /** A message panel over the game; `tone` colors its title. */
+  private panel(
+    title: string,
+    body: string,
+    actions: { text: string; color: string; fn: () => void }[],
+    tone = "#8f7cf0",
+  ): void {
     const ctx = this.ctx;
     ctx.fillStyle = "rgba(40,25,10,0.45)";
     ctx.fillRect(0, 0, W, H);
@@ -993,13 +999,11 @@ class App {
     roundRect(ctx, px, py, pw, ph, 24);
     ctx.fill();
     ctx.restore();
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "#6b4523";
-    ctx.font = `800 26px ui-rounded, "Nunito", system-ui, sans-serif`;
-    ctx.fillText(title, W / 2, py + 44, pw - 30);
+    countLabel(ctx, title, W / 2, py + 44, 27, tone, false, pw - 36);
     if (body) {
-      ctx.font = `600 15px ui-rounded, system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = BODY_FONT;
       ctx.fillStyle = "#8a6440";
       wrap(ctx, body, W / 2, py + 82, pw - 40, 20);
     }

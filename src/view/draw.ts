@@ -253,6 +253,9 @@ function labelFont(ctx: CanvasRenderingContext2D, size: number): void {
   if ("wordSpacing" in ctx) spaced.wordSpacing = `${size * 0.12}px`;
 }
 
+/** The rounded face for sentences: the labels' family, heavy but without outline or tight spacing. */
+export const BODY_FONT = `800 15px ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui, sans-serif`;
+
 /** How wide countLabel draws `text` at `size`, for laying out an icon beside it. */
 export function labelWidth(ctx: CanvasRenderingContext2D, text: string, size: number): number {
   ctx.save();
@@ -268,6 +271,7 @@ export function labelWidth(ctx: CanvasRenderingContext2D, text: string, size: nu
  * crate's color, and a solid drop under it so the number looks pressed out of
  * the crate. Light crates get dark lettering with a white edge instead.
  * `flat` leaves out the drop and thins the outline, for small or faded crates.
+ * With `maxWidth`, a label that would be wider shrinks to fit.
  */
 export function countLabel(
   ctx: CanvasRenderingContext2D,
@@ -277,7 +281,12 @@ export function countLabel(
   size: number,
   color: string,
   flat = false,
+  maxWidth = Infinity,
 ): void {
+  if (maxWidth < Infinity) {
+    const w = labelWidth(ctx, text, size);
+    if (w > maxWidth) size *= maxWidth / w;
+  }
   ctx.save();
   labelFont(ctx, size);
   ctx.textAlign = "center";
@@ -346,18 +355,12 @@ export function well(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
 
 /** A small rounded label, e.g. "blocked" under a slot. */
 export function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number): void {
-  ctx.save();
-  ctx.font = `800 10px "Nunito", ui-rounded, system-ui, sans-serif`;
-  const w = ctx.measureText(text).width + 14;
+  // A small glossy chip, lettered like the other labels.
+  const tone = "#6e4a2e";
+  const w = labelWidth(ctx, text, 10) + 16;
   const h = 16;
-  ctx.fillStyle = "rgba(60,35,15,0.78)";
-  roundRect(ctx, cx - w / 2, cy - h / 2, w, h, h / 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, cx, cy + 0.5);
-  ctx.restore();
+  pod(ctx, cx - w / 2, cy - h / 2, w, h, tone, h / 2);
+  countLabel(ctx, text, cx, cy - 0.6, 10, tone, true);
 }
 
 /**
@@ -490,7 +493,7 @@ export function badge(ctx: CanvasRenderingContext2D, text: string, cx: number, c
   ctx.fill();
   ctx.restore();
   ctx.save();
-  ctx.font = `800 13px "Nunito", ui-rounded, system-ui, sans-serif`;
+  labelFont(ctx, 13);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = shade(color, -0.35);
