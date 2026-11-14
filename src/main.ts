@@ -61,10 +61,16 @@ const BLOCK = { w: 80, h: 52, gx: 14, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
 
-// Pace at 1x. Trucks are sent the moment a cube is reachable; the speed button
-// multiplies driving and loading, so 2x and 3x are exactly double and triple.
+// Pace at 1x. A crate sends a truck as soon as a cube is reachable, then one
+// every POP_INTERVAL; the speed button multiplies driving, loading and that
+// interval, so 2x and 3x are exactly double and triple.
 /** Truck driving speed in design px per second. */
 const CAR_SPEED = 200;
+/**
+ * Seconds between one crate's trucks at 1x, so its number visibly counts down
+ * as each truck pops out. Matches the ramp spacing, so trucks don't queue.
+ */
+const POP_INTERVAL = CONVOY_GAP / CAR_SPEED;
 /** Seconds a truck stops to load its cube: the cube lifts out, arcs into the bed and lands. */
 const LOAD_TIME = 0.42;
 /** Share of LOAD_TIME the cube spends working loose and rising out of its spot. */
@@ -148,6 +154,9 @@ class App {
   /** Per ramp lane: trucks sent out but still waiting underground for the lane to clear, oldest first. */
   private particles: Particle[] = [];
   private flyers: Flyer[] = [];
+  /** Per slot: seconds until it may send its next truck, and how much its number is still bumped (1 -> 0). */
+  private slotTimer: number[] = new Array(MAX_SLOTS).fill(0);
+  private slotBump: number[] = new Array(MAX_SLOTS).fill(0);
   private buttons: Button[] = [];
   private speed = 1;
   private slotBoostUsed = false;
@@ -216,6 +225,8 @@ class App {
     this.rampTimer = RAMP_LANES.map(() => 0);
     this.particles = [];
     this.flyers = [];
+    this.slotTimer.fill(0);
+    this.slotBump.fill(0);
     this.slotBoostUsed = false;
     this.overlayDelay = 0;
   }
@@ -325,12 +336,19 @@ class App {
     this.shake = Math.max(0, this.shake - dt);
     const sdt = dt * this.speed;
 
-    // Don't wait between trucks: every slot sends a truck to every reachable cube
-    // of its color right away. Each tick sends at most one per slot, so keep
-    // ticking until nothing more can go.
+    // Each slot sends a truck to a reachable cube as soon as it has one, then one
+    // more every POP_INTERVAL, so its number counts down truck by truck. A crate
+    // still flying into its slot waits until it lands.
+    for (let k = 0; k < MAX_SLOTS; k++) {
+      this.slotTimer[k] -= sdt;
+      this.slotBump[k] = Math.max(0, this.slotBump[k] - dt * 6);
+    }
     if (this.game.status === "playing") {
-      for (let sent = this.game.tick(); sent.length > 0; sent = this.game.tick()) {
-        for (const d of sent) this.sendTruck(d);
+      const ready = (s: number) => this.slotTimer[s] <= 0 && !this.flyers.some((f) => f.slot === s);
+      for (const d of this.game.tick(ready)) {
+        this.sendTruck(d);
+        this.slotTimer[d.slot] = POP_INTERVAL;
+        this.slotBump[d.slot] = 1;
       }
     }
 
@@ -844,7 +862,9 @@ class App {
       if (waiting) holdStripes(ctx, x, r.y, r.w, r.h, color);
       ctx.save();
       if (waiting) ctx.globalAlpha = 0.6;
-      numeral(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 24, color);
+      // The number pops a little each time a truck leaves.
+      const bump = this.slotBump[i] ?? 0;
+      numeral(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 24 * (1 + 0.22 * bump * bump), color);
       // How many of this crate's trucks are still to go.
       const start = this.startCounts.get(b.id) ?? b.count;
       const barW = r.w - 20;

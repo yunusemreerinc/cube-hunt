@@ -64,12 +64,13 @@ export class Game {
     if (this.status === "stuck") this.status = "playing";
   }
 
-  tick(): Dispatch[] {
+  /** `ready` lets the view hold a slot back, e.g. to space out its trucks. */
+  tick(ready: (slot: number) => boolean = () => true): Dispatch[] {
     if (this.status !== "playing") return [];
     const out: Dispatch[] = [];
     for (let s = 0; s < this.slots.length; s++) {
       const b = this.slots[s];
-      if (!b) continue;
+      if (!b || !ready(s)) continue;
       const cell = this.board.pickTarget(b.color);
       if (cell < 0) continue;
       this.board.claim(cell);
