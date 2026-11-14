@@ -18,9 +18,12 @@ import {
   luminance,
   pill,
   pod,
+  roundButton,
   roundRect,
   shade,
   socketSprite,
+  speedArrows,
+  speedArrowsWidth,
   well,
 } from "./view/draw";
 import { RoadMap, type Pt, type Ring } from "./view/roads";
@@ -669,15 +672,15 @@ class App {
 
   private drawTopBar(): void {
     const ctx = this.ctx;
-    const round = (x: number, y: number, r: number, color: string, kind: IconKind, fn: () => void) => {
-      const h = r * 2 + 4;
-      pod(ctx, x - r, y - r, r * 2, h, color, r);
-      icon(ctx, kind, x, y - r + (h - Math.max(3, h * 0.1)) / 2, r * 0.95, color);
-      this.button(x - r, y - r, r * 2, h, fn);
+    // Round slate buttons with white icons; the colorful buttons live at the bottom.
+    const round = (x: number, y: number, r: number, kind: IconKind, fn: () => void) => {
+      roundButton(ctx, x, y, r);
+      icon(ctx, kind, x, y, r * 0.95, "#4a505b");
+      this.button(x - r, y - r, r * 2, r * 2, fn);
     };
-    round(30, 32, 18, "#8f7cf0", "restart", () => this.startLevel());
-    round(70, 32, 15, "#f0a35c", "prev", () => this.goToLevel(this.levelIndex - 1));
-    round(300, 32, 15, "#f0a35c", "next", () => this.goToLevel(this.levelIndex + 1));
+    round(30, 32, 17, "restart", () => this.startLevel());
+    round(70, 32, 15, "prev", () => this.goToLevel(this.levelIndex - 1));
+    round(300, 32, 15, "next", () => this.goToLevel(this.levelIndex + 1));
 
     const title = this.custom
       ? this.level.picture.name
@@ -691,11 +694,19 @@ class App {
     pod(ctx, 185 - chipW / 2, 38, chipW, 17, tone, 8.5);
     countLabel(ctx, difficulty, 185, 45.5, 11, tone, true);
 
-    // Speed toggle
-    pod(ctx, 330, 14, 76, 38, "#3fb6f2", 16);
-    icon(ctx, "fast", 353, 31, 18, "#3fb6f2");
-    countLabel(ctx, `${this.speed}x`, 384, 31, 17, "#3fb6f2");
-    this.button(330, 14, 76, 38, () => (this.speed = (this.speed % 3) + 1));
+    // Speed toggle: one arrow per step of speed, then the speed; each tap goes up one, 3x back to 1x.
+    const sp = { x: 326, y: 14, w: 82, h: 38 };
+    const spMid = sp.y + (sp.h - Math.max(3, sp.h * 0.1)) / 2;
+    pod(ctx, sp.x, sp.y, sp.w, sp.h, "#3fb6f2", 16);
+    // The label stays put: the layout is centered for the widest case (three
+    // arrows), and the arrows sit just left of the label, growing leftwards.
+    const textW = labelWidth(ctx, "3x", 17);
+    const groupW = speedArrowsWidth(3, 13) + 6 + textW;
+    const labelX = sp.x + (sp.w + groupW) / 2 - textW / 2;
+    const arrowsW = speedArrowsWidth(this.speed, 13);
+    speedArrows(ctx, this.speed, labelX - textW / 2 - 6 - arrowsW, spMid, 13, "#3fb6f2");
+    countLabel(ctx, `${this.speed}x`, labelX, spMid, 17, "#3fb6f2");
+    this.button(sp.x, sp.y, sp.w, sp.h, () => (this.speed = (this.speed % 3) + 1));
   }
 
   private drawBoard(): void {

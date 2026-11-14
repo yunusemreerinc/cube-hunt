@@ -443,6 +443,34 @@ export function countLabel(
   ctx.restore();
 }
 
+/** A round slate toolbar button with a soft shadow, a light rim and a glassy highlight. */
+export function roundButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  ctx.save();
+  ctx.shadowColor = "rgba(60,35,15,0.32)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  const body = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+  body.addColorStop(0, "#737a88");
+  body.addColorStop(1, "#4a505b");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  const shine = ctx.createLinearGradient(0, cy - r, 0, cy);
+  shine.addColorStop(0, "rgba(255,255,255,0.28)");
+  shine.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = shine;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - r * 0.42, r * 0.72, r * 0.48, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
 /** A slate dock that holds the slots, with a soft shadow and a highlight along its top edge. */
 export function dock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 20): void {
   ctx.save();
@@ -529,7 +557,53 @@ export function holdStripes(
   ctx.restore();
 }
 
-export type IconKind = "restart" | "prev" | "next" | "fast" | "picture";
+/** Width of `n` play arrows drawn by speedArrows at `size`. */
+export function speedArrowsWidth(n: number, size: number): number {
+  const w = size * 0.62;
+  return w + w * 0.82 * (n - 1);
+}
+
+/**
+ * `n` solid white play arrows in a row, starting at `left` and centered on `cy`,
+ * each `size` tall: one for 1x, two for 2x, three for 3x. All the shadows go
+ * down first, so no arrow's shadow falls across another.
+ */
+export function speedArrows(ctx: CanvasRenderingContext2D, n: number, left: number, cy: number, size: number, color: string): void {
+  const h = size / 2;
+  const w = size * 0.62;
+  const step = w * 0.82;
+  const path = () => {
+    ctx.beginPath();
+    for (let k = 0; k < n; k++) {
+      const x = left + k * step;
+      ctx.moveTo(x, cy - h);
+      ctx.lineTo(x + w, cy);
+      ctx.lineTo(x, cy + h);
+      ctx.closePath();
+    }
+  };
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineWidth = size * 0.1;
+  ctx.fillStyle = ctx.strokeStyle = shade(color, -0.6);
+  ctx.globalAlpha *= 0.45;
+  ctx.filter = "blur(1px)";
+  ctx.translate(0, 1.2);
+  path();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineWidth = size * 0.1;
+  ctx.fillStyle = ctx.strokeStyle = "#fff";
+  path();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+export type IconKind = "restart" | "prev" | "next" | "picture";
 
 /**
  * A white line icon centered on (cx, cy), drawn as shapes rather than font
@@ -579,18 +653,6 @@ export function icon(
       ctx.lineTo(cx - d * s * 0.35, cy);
       ctx.lineTo(cx + d * s * 0.35, cy + s * 0.7);
       ctx.stroke();
-      break;
-    }
-    case "fast": {
-      // Two play triangles side by side.
-      for (const ox of [-s * 0.55, s * 0.35]) {
-        ctx.beginPath();
-        ctx.moveTo(cx + ox - s * 0.45, cy - s * 0.62);
-        ctx.lineTo(cx + ox + s * 0.5, cy);
-        ctx.lineTo(cx + ox - s * 0.45, cy + s * 0.62);
-        ctx.closePath();
-        ctx.fill();
-      }
       break;
     }
     case "picture": {

@@ -69,7 +69,7 @@ Pictures range from 24×24 cubes (Strawberry) to 40×40 (Ringed Planet).
   its own. If every slot is full and every crate in them is blocked, you're out
   of moves.
 - Boosters: **+1 Slot** once per level. **Your image** turns any picture into a
-  level. **▶▶** switches between 1x, 2x and 3x speed.
+  level. The speed button at the top right steps through **▶ 1x**, **▶▶ 2x** and **▶▶▶ 3x**.
 
 ## Code layout
 
