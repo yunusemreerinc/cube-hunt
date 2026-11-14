@@ -80,8 +80,8 @@ const LIFT_END = 0.22;
 /** Share of LOAD_TIME at which the cube lands in the bed; the truck settles after that. */
 const LAND_AT = 0.78;
 /** Where the bed's middle is, in truck units behind the truck's center, and the cargo cube's size. */
-const BED_X = -6.2;
-const BED_CUBE = 8;
+const BED_X = -6.3;
+const BED_CUBE = 7;
 const ROAD_COLOR = "#a3968c";
 /** Distance over which a truck shrinks and fades as it drives down the ramp. */
 const RAMP_FADE = 28;
