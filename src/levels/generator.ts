@@ -34,6 +34,19 @@ export function peelLayers(picture: Picture, edges: OpenEdges = "all"): Int32Arr
   return layer;
 }
 
+/**
+ * Fisher-Yates shuffle driven by `rng`. Unlike sorting with a random comparator,
+ * this gives the same order in every JavaScript engine for the same seed.
+ */
+export function shuffled<T>(items: T[], rng: () => number): T[] {
+  const out = items.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 function splitCount(n: number, min: number, max: number, rng: () => number): number[] {
   const out: number[] = [];
   let rem = n;
@@ -89,7 +102,7 @@ export function generateLevel(picture: Picture, opts: GenOptions): Level {
   const cols: Block[][] = Array.from({ length: columns }, () => []);
   for (let i = 0; i < pending.length; i += columns) {
     const row = pending.slice(i, i + columns);
-    const order = cols.map((_, c) => c).sort(() => rng() - 0.5);
+    const order = shuffled(cols.map((_, c) => c), rng);
     // Prefer shorter columns for a ragged last row.
     order.sort((a, b) => cols[a].length - cols[b].length);
     row.forEach((p, k) => cols[order[k]].push(p.block));

@@ -68,7 +68,10 @@ describe("RoadMap", () => {
       const g = new Game(level);
       const roads = roadsFor(g.board);
       let checked = 0;
-      for (let guard = 0; g.status === "playing" && guard < 100_000; guard++) {
+      for (let guard = 0; g.status !== "won" && guard < 100_000; guard++) {
+        // This simple player can run out of moves; like a player would, it then
+        // takes an extra slot and carries on, so every cube's route gets checked.
+        if (g.status === "stuck") g.addSlot();
         while (g.hasFreeSlot()) {
           const col = g.columns.findIndex((c) => c.length && g.board.reachableCount(c[0].color) > 0);
           if (col < 0) break;
@@ -77,8 +80,7 @@ describe("RoadMap", () => {
         const sent = g.tick();
         if (sent.length === 0 && g.status === "playing") {
           const col = g.columns.findIndex((c) => c.length > 0);
-          if (col < 0 || !g.hasFreeSlot()) break;
-          g.tap(col);
+          if (col >= 0 && g.hasFreeSlot()) g.tap(col);
         }
         for (const d of sent) {
           const route = roads.route(d.cell);
@@ -96,7 +98,9 @@ describe("RoadMap", () => {
         // Trucks pick their cubes up before the next tick.
         for (const d of sent) g.collect(d.cell);
       }
-      expect(checked).toBeGreaterThan(100);
+      expect(g.status).toBe("won");
+      // One route per cube in the picture.
+      expect(checked).toBe(spec.picture.cells.filter((c) => c >= 0).length);
     });
   }
 });
