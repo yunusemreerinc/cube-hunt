@@ -116,7 +116,7 @@ function mushroom(): Picture {
     G: "#5cc464",
     R: "#e8424f",
     W: "#ffffff",
-    C: "#f6e1bb",
+    C: "#d09b5c",
     K: "#2d2d40",
   });
 }
