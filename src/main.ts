@@ -12,6 +12,7 @@ import {
   dock,
   holdStripes,
   icon,
+  iconChip,
   lane,
   type IconKind,
   BODY_FONT,
@@ -1198,25 +1199,43 @@ class App {
     const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS && this.game.status !== "won";
     const by = BAR_Y + 4;
     const bh = 54;
-    const mid = by + (bh - Math.max(3, bh * 0.1)) / 2;
-    ctx.save();
-    ctx.globalAlpha = canSlot ? 1 : 0.45;
-    pod(ctx, 24, by, 176, bh, "#5cc464", 20);
-    // Flat while it can't be used, so the faded label stays clean.
-    countLabel(ctx, "+1 Slot", 100, mid, 19, "#5cc464", !canSlot);
-    badge(ctx, canSlot ? "1" : "0", 168, mid, "#5cc464");
-    ctx.restore();
+    // Once used, "+1 Slot" turns a muted slate so it reads as spent.
+    this.actionButton(24, by, 176, bh, canSlot ? "#5cc464" : "#8a909b", "slot", "+1 Slot", canSlot ? "1" : "0", !canSlot);
     if (canSlot) this.button(24, by, 176, bh, () => this.addSlot());
-
-    pod(ctx, 220, by, 176, bh, "#8f7cf0", 20);
-    // Center the icon and the words together as one group.
-    const textW = labelWidth(ctx, "Your image", 18);
-    const iconW = 20;
-    const gap = 9;
-    const left = 220 + (176 - (iconW + gap + textW)) / 2;
-    icon(ctx, "picture", left + iconW / 2, mid, 18, "#8f7cf0");
-    countLabel(ctx, "Your image", left + iconW + gap + textW / 2, mid, 18, "#8f7cf0");
+    this.actionButton(220, by, 176, bh, "#8f7cf0", "picture", "Your image");
     this.button(220, by, 176, bh, () => this.fileInput.click());
+  }
+
+  /**
+   * A pill-shaped action button: a glossy body, its icon in a frosted circle at
+   * the left, the label beside it, and an optional count badge at the right.
+   */
+  private actionButton(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    color: string,
+    kind: IconKind,
+    label: string,
+    count?: string,
+    spent = false,
+  ): void {
+    const ctx = this.ctx;
+    const face = h - Math.max(3, h * 0.1);
+    const mid = y + face / 2;
+    ctx.save();
+    if (spent) ctx.globalAlpha = 0.75;
+    pod(ctx, x, y, w, h, color, face / 2);
+    const chipR = face / 2 - 6;
+    const chipX = x + 6 + chipR;
+    iconChip(ctx, chipX, mid, chipR);
+    icon(ctx, kind, chipX, mid, chipR * 1.05, color);
+    const right = count === undefined ? x + w - 12 : x + w - 12 - 24;
+    const textX = (chipX + chipR + 4 + right) / 2;
+    countLabel(ctx, label, textX, mid, 18, color, spent, right - chipX - chipR - 8);
+    if (count !== undefined) badge(ctx, count, x + w - 12 - 11, mid, color);
+    ctx.restore();
   }
 
   private drawOverlay(): void {
@@ -1228,10 +1247,11 @@ class App {
     if (this.game.status === "won") {
       const last = !this.custom && this.levelIndex === this.specs.length - 1;
       const next = this.custom
-        ? { text: "Play again", color: "#5cc464", fn: () => this.startLevel() }
+        ? { text: "Play again", color: "#5cc464", icon: "restart" as IconKind, fn: () => this.startLevel() }
         : {
             text: last ? "Back to level 1" : "Next level",
             color: "#5cc464",
+            icon: (last ? "restart" : "next") as IconKind,
             fn: () => this.goToLevel(this.levelIndex + 1),
           };
       this.panel("Picture complete!", "Every cube was hauled away.", [next], "#5cc464");
@@ -1241,8 +1261,8 @@ class App {
         "Out of moves",
         "Every slot is waiting for a color that can't be reached.",
         [
-          ...(canSlot ? [{ text: "+1 Slot", color: "#5cc464", fn: () => this.addSlot() }] : []),
-          { text: "Retry", color: "#8f7cf0", fn: () => this.startLevel() },
+          ...(canSlot ? [{ text: "+1 Slot", color: "#5cc464", icon: "slot" as IconKind, fn: () => this.addSlot() }] : []),
+          { text: "Retry", color: "#8f7cf0", icon: "restart" as IconKind, fn: () => this.startLevel() },
         ],
         "#e8424f",
       );
@@ -1253,7 +1273,7 @@ class App {
   private panel(
     title: string,
     body: string,
-    actions: { text: string; color: string; fn: () => void }[],
+    actions: { text: string; color: string; icon: IconKind; fn: () => void }[],
     tone = "#8f7cf0",
   ): void {
     const ctx = this.ctx;
@@ -1286,8 +1306,7 @@ class App {
     actions.forEach((a, i) => {
       const bx = (W - total) / 2 + i * (bw + 16);
       const by = py + ph - 74;
-      pod(ctx, bx, by, bw, 54, a.color, 20);
-      countLabel(ctx, a.text, bx + bw / 2, by + (54 - Math.max(3, 5.4)) / 2, 19, a.color);
+      this.actionButton(bx, by, bw, 54, a.color, a.icon, a.text);
       this.button(bx, by, bw, 54, a.fn);
     });
   }
