@@ -441,3 +441,41 @@ export function badge(ctx: CanvasRenderingContext2D, text: string, cx: number, c
   ctx.fillText(text, cx, cy + 0.5);
   ctx.restore();
 }
+
+/**
+ * A strip of red brick wall filling the rectangle (x, y, w, h): two staggered
+ * courses of bricks running along its long side, with light mortar, a lit top
+ * edge and a shaded bottom edge.
+ */
+export function brickWall(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  const along = w >= h; // bricks run along the strip's long side
+  const len = along ? w : h;
+  const thick = along ? h : w;
+  const brick = 11; // brick length
+  ctx.save();
+  ctx.translate(x, y);
+  if (!along) {
+    // Draw vertical strips as horizontal ones turned a quarter.
+    ctx.translate(w, 0);
+    ctx.rotate(Math.PI / 2);
+  }
+  // Mortar shows through the gaps between bricks.
+  ctx.fillStyle = "#e9d3b8";
+  ctx.fillRect(0, 0, len, thick);
+  const course = thick / 2;
+  for (let row = 0; row < 2; row++) {
+    const top = row * course;
+    for (let bx = row === 0 ? 0 : -brick / 2; bx < len; bx += brick) {
+      const left = Math.max(0, bx) + 0.5;
+      const right = Math.min(len, bx + brick) - 0.5;
+      if (right <= left) continue;
+      ctx.fillStyle = "#c2553a";
+      ctx.fillRect(left, top + 0.5, right - left, course - 1);
+      ctx.fillStyle = "rgba(255,220,190,0.35)"; // lit top of each brick
+      ctx.fillRect(left, top + 0.5, right - left, Math.max(0.6, course * 0.25));
+      ctx.fillStyle = "rgba(70,20,10,0.25)"; // shaded bottom of each brick
+      ctx.fillRect(left, top + course - 1.1, right - left, 0.6);
+    }
+  }
+  ctx.restore();
+}
