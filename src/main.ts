@@ -82,7 +82,11 @@ const LAND_AT = 0.78;
 /** Where the bed's middle is, in truck units behind the truck's center, and the cargo cube's size. */
 const BED_X = -6.3;
 const BED_CUBE = 7;
-const ROAD_COLOR = "#a3968c";
+/** Road surface: dark slate asphalt with cream curbs, white edge lines and a warm center line. */
+const ASPHALT = "#565c68";
+const CURB = "#f6efe4";
+const EDGE_LINE = "rgba(255,255,255,0.5)";
+const CENTER_LINE = "#ffd36b";
 /** Distance over which a truck shrinks and fades as it drives down the ramp. */
 const RAMP_FADE = 28;
 
@@ -702,18 +706,41 @@ class App {
     roundRect(ctx, BOARD.x, BOARD.y, BOARD.w, BOARD.h, 16);
     ctx.fill();
 
-    // The road around the field, with a dashed center line.
-    ctx.lineJoin = "round";
-    ctx.strokeStyle = ROAD_COLOR;
-    ctx.lineWidth = ROAD_W;
+    // The road around the field: asphalt between cream curbs, with a soft shadow,
+    // fine white edge lines and a dashed center line.
     const ring = this.ring;
-    roundRect(ctx, ring.x0, ring.y0, ring.x1 - ring.x0, ring.y1 - ring.y0, 8);
+    const loop = (out: number) =>
+      roundRect(ctx, ring.x0 - out, ring.y0 - out, ring.x1 - ring.x0 + 2 * out, ring.y1 - ring.y0 + 2 * out, Math.max(1, 8 + out));
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.translate(0, 2.5);
+    ctx.strokeStyle = "rgba(90,55,20,0.16)";
+    ctx.lineWidth = ROAD_W + 7;
+    loop(0);
     ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,255,0.7)";
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([6, 6]);
+    ctx.restore();
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = CURB;
+    ctx.lineWidth = ROAD_W + 4;
+    loop(0);
+    ctx.stroke();
+    ctx.strokeStyle = ASPHALT;
+    ctx.lineWidth = ROAD_W;
+    ctx.stroke();
+    ctx.strokeStyle = EDGE_LINE;
+    ctx.lineWidth = 1;
+    for (const out of [ROAD_W / 2 - 2.5, -(ROAD_W / 2 - 2.5)]) {
+      loop(out);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = CENTER_LINE;
+    ctx.lineWidth = 1.4;
+    ctx.lineCap = "round";
+    ctx.setLineDash([6, 7]);
+    loop(0);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineCap = "butt";
 
     const cs = this.cellSize();
     this.drawWalls(cs);
@@ -785,56 +812,88 @@ class App {
     const ctx = this.ctx;
     const x = TUNNEL.x - TUNNEL.w / 2;
     const y = TUNNEL.y - TUNNEL.h / 2;
-    // A wide driveway from the road down to the ramp, one lane per ramp lane.
+    const top = this.ring.y1 + 1; // just below the road's center line, so it stays visible
+
+    // A wide driveway from the road down to the ramp, one lane per ramp lane,
+    // with curbs and edge lines down its sides.
     const apron = RAMP_LANES[RAMP_LANES.length - 1] + 14;
-    ctx.fillStyle = ROAD_COLOR;
-    ctx.fillRect(TUNNEL.x - apron, this.ring.y1, apron * 2, y - this.ring.y1 + 2);
-    const r = 12;
-    ctx.fillStyle = "rgba(110,70,30,0.25)";
-    roundRect(ctx, x - 4, y - 2, TUNNEL.w + 8, TUNNEL.h + 10, r + 4);
-    ctx.fill();
-    // Hazard-striped rim.
-    ctx.save();
-    roundRect(ctx, x - 5, y - 5, TUNNEL.w + 10, TUNNEL.h + 10, r + 4);
-    ctx.clip();
-    ctx.fillStyle = "#f2c230";
-    ctx.fillRect(x - 5, y - 5, TUNNEL.w + 10, TUNNEL.h + 10);
-    ctx.fillStyle = "#3a2a1c";
-    for (let sx = x - 40; sx < x + TUNNEL.w + 20; sx += 14) {
+    ctx.fillStyle = CURB;
+    ctx.fillRect(TUNNEL.x - apron - 2, this.ring.y1 + ROAD_W / 2, apron * 2 + 4, y - this.ring.y1 - ROAD_W / 2 + 2);
+    ctx.fillStyle = ASPHALT;
+    ctx.fillRect(TUNNEL.x - apron, top, apron * 2, y - top + 2);
+    ctx.strokeStyle = EDGE_LINE;
+    ctx.lineWidth = 1;
+    for (const ex of [TUNNEL.x - apron + 2.5, TUNNEL.x + apron - 2.5]) {
       ctx.beginPath();
-      ctx.moveTo(sx, y + TUNNEL.h + 6);
-      ctx.lineTo(sx + 7, y + TUNNEL.h + 6);
-      ctx.lineTo(sx + 7 + TUNNEL.h + 12, y - 6);
-      ctx.lineTo(sx + TUNNEL.h + 12, y - 6);
-      ctx.closePath();
+      ctx.moveTo(ex, this.ring.y1 + ROAD_W / 2 - 2.5);
+      ctx.lineTo(ex, y - 4);
+      ctx.stroke();
+    }
+
+    // The ramp: a brushed-metal portal around a deep slate tunnel.
+    const r = 12;
+    ctx.save();
+    ctx.shadowColor = "rgba(60,35,15,0.35)";
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 4;
+    const metal = ctx.createLinearGradient(0, y - 6, 0, y + TUNNEL.h + 6);
+    metal.addColorStop(0, "#f4f0ea");
+    metal.addColorStop(0.5, "#d3ccc1");
+    metal.addColorStop(1, "#a59c90");
+    ctx.fillStyle = metal;
+    roundRect(ctx, x - 6, y - 6, TUNNEL.w + 12, TUNNEL.h + 12, r + 5);
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = "rgba(90,80,70,0.45)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, x - 5.5, y - 5.5, TUNNEL.w + 11, TUNNEL.h + 11, r + 4.5);
+    ctx.stroke();
+    // The opening gets darker as the ramp goes down, with a shadow under the lip.
+    const deep = ctx.createLinearGradient(0, y, 0, y + TUNNEL.h);
+    deep.addColorStop(0, "#3d4350");
+    deep.addColorStop(1, "#0c0e13");
+    ctx.fillStyle = deep;
+    roundRect(ctx, x, y, TUNNEL.w, TUNNEL.h, r);
+    ctx.fill();
+    const lip = ctx.createLinearGradient(0, y, 0, y + 9);
+    lip.addColorStop(0, "rgba(0,0,0,0.45)");
+    lip.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = lip;
+    roundRect(ctx, x, y, TUNNEL.w, 9, r);
+    ctx.fill();
+    // A row of warm lights along the top of the portal.
+    ctx.save();
+    ctx.fillStyle = CENTER_LINE;
+    ctx.shadowColor = "rgba(255,200,90,0.9)";
+    ctx.shadowBlur = 4;
+    for (let lx = x + 10; lx <= x + TUNNEL.w - 9; lx += 11) {
+      ctx.beginPath();
+      ctx.arc(lx, y - 3, 1.3, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
-    // The ramp gets darker as it goes down.
-    const g = ctx.createLinearGradient(0, y, 0, y + TUNNEL.h);
-    g.addColorStop(0, "#6b4a2c");
-    g.addColorStop(1, "#1d140c");
-    ctx.fillStyle = g;
-    roundRect(ctx, x, y, TUNNEL.w, TUNNEL.h, r);
-    ctx.fill();
+
     // Lane markings between the ramp lanes, continuing up the driveway.
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 1.3;
+    ctx.lineCap = "round";
+    ctx.setLineDash([5, 6]);
     for (let k = 1; k < RAMP_LANES.length; k++) {
       const lx = TUNNEL.x + (RAMP_LANES[k - 1] + RAMP_LANES[k]) / 2;
-      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.strokeStyle = "rgba(255,255,255,0.75)";
       ctx.beginPath();
       ctx.moveTo(lx, this.ring.y1 + ROAD_W / 2 + 2);
-      ctx.lineTo(lx, y - 1);
+      ctx.lineTo(lx, y - 8);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(255,240,200,0.35)";
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
       ctx.beginPath();
-      ctx.moveTo(lx, y + 4);
+      ctx.moveTo(lx, y + 5);
       ctx.lineTo(lx, y + TUNNEL.h - 6);
       ctx.stroke();
     }
     ctx.setLineDash([]);
+    ctx.lineCap = "butt";
   }
+
 
   private drawSlots(): void {
     const ctx = this.ctx;
