@@ -1,4 +1,4 @@
-import { Game } from "./core/game";
+import { Game, type Dispatch } from "./core/game";
 import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel } from "./levels/generator";
@@ -61,13 +61,8 @@ const BLOCK = { w: 80, h: 52, gx: 14, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
 
-// Pace at 1x. The speed button multiplies all three, so 2x and 3x are exactly
-// double and triple this pace.
-/**
- * Milliseconds between truck dispatches from each slot: a crate sends its trucks
- * out quickly, one after another (26 trucks leave in about 2.6 s at 1x).
- */
-const TICK_MS = 100;
+// Pace at 1x. Trucks are sent the moment a cube is reachable; the speed button
+// multiplies driving and loading, so 2x and 3x are exactly double and triple.
 /** Truck driving speed in design px per second. */
 const CAR_SPEED = 200;
 /** Seconds a truck stops to load its cube. */
@@ -152,7 +147,6 @@ class App {
   private flyers: Flyer[] = [];
   private buttons: Button[] = [];
   private speed = 1;
-  private tickAcc = 0;
   private slotBoostUsed = false;
   private shake = 0;
   private time = 0;
@@ -219,7 +213,6 @@ class App {
     this.nextCarId = 0;
     this.particles = [];
     this.flyers = [];
-    this.tickAcc = 0;
     this.slotBoostUsed = false;
     this.overlayDelay = 0;
   }
@@ -329,50 +322,13 @@ class App {
     this.shake = Math.max(0, this.shake - dt);
     const sdt = dt * this.speed;
 
+    // Don't wait between trucks: every slot sends a truck to every reachable cube
+    // of its color right away. Each tick sends at most one per slot, so keep
+    // ticking until nothing more can go.
     if (this.game.status === "playing") {
-      this.tickAcc += sdt * 1000;
-      while (this.tickAcc >= TICK_MS) {
-        this.tickAcc -= TICK_MS;
-        for (const d of this.game.tick()) {
-          // Each truck takes the ramp lane with the shortest drive, counting the trucks
-          // already waiting for it; any queue waits out of sight in the tunnel.
-          let lane = 0;
-          let route: Pt[] = [];
-          let bestScore = Infinity;
-          RAMP_LANES.forEach((dx, k) => {
-            const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: this.ring.y1 });
-            const score = plan.cost + this.tunnelQueues[k].length * FOLLOW_GAP * 1.5;
-            if (score < bestScore) {
-              bestScore = score;
-              lane = k;
-              route = plan.path;
-            }
-          });
-          const sx = TUNNEL.x + RAMP_LANES[lane];
-          const sy = TUNNEL.y + TUNNEL.h * 0.2;
-          this.tunnelQueues[lane].push({
-            id: this.nextCarId++,
-            x: sx,
-            y: sy,
-            sx,
-            sy,
-            path: route,
-            step: 0,
-            route,
-            cube: this.roads.center(d.cell),
-            color: this.level.picture.palette[d.color],
-            cell: d.cell,
-            state: "out",
-            cargo: false,
-            wait: 0,
-            angle: -Math.PI / 2,
-            waited: 0,
-            squeeze: 0,
-          });
-        }
+      for (let sent = this.game.tick(); sent.length > 0; sent = this.game.tick()) {
+        for (const d of sent) this.sendTruck(d);
       }
-    } else {
-      this.tickAcc = 0;
     }
 
     this.releaseFromTunnel();
@@ -433,6 +389,45 @@ class App {
     const next = c.state === "load" ? undefined : c.path[c.step];
     if (next && Math.hypot(next.x - c.x, next.y - c.y) > 0.5) return Math.atan2(next.y - c.y, next.x - c.x);
     return c.angle;
+  }
+
+  /** Puts a truck for this dispatch in the tunnel, in the ramp lane that suits its route best. */
+  private sendTruck(d: Dispatch): void {
+    // Each truck takes the ramp lane with the shortest drive, counting the trucks
+    // already waiting for it; any queue waits out of sight in the tunnel.
+    let lane = 0;
+    let route: Pt[] = [];
+    let bestScore = Infinity;
+    RAMP_LANES.forEach((dx, k) => {
+      const plan = this.roads.routeFrom(d.cell, { x: TUNNEL.x + dx, y: this.ring.y1 });
+      const score = plan.cost + this.tunnelQueues[k].length * FOLLOW_GAP * 1.5;
+      if (score < bestScore) {
+        bestScore = score;
+        lane = k;
+        route = plan.path;
+      }
+    });
+    const sx = TUNNEL.x + RAMP_LANES[lane];
+    const sy = TUNNEL.y + TUNNEL.h * 0.2;
+    this.tunnelQueues[lane].push({
+      id: this.nextCarId++,
+      x: sx,
+      y: sy,
+      sx,
+      sy,
+      path: route,
+      step: 0,
+      route,
+      cube: this.roads.center(d.cell),
+      color: this.level.picture.palette[d.color],
+      cell: d.cell,
+      state: "out",
+      cargo: false,
+      wait: 0,
+      angle: -Math.PI / 2,
+      waited: 0,
+      squeeze: 0,
+    });
   }
 
   /** In each ramp lane, lets the next queued truck come up once the one before it has moved on. */

@@ -55,9 +55,9 @@ Rubber Duck, Ice Cream and Watermelon.
   to cubes that are still walled in.
 - Cubes next to the road go first: each truck takes the reachable cube of its
   color that is fewest cells in from the road (with no brick wall in the way),
-  then the one with the shortest drive from the ramp. A crate sends one truck to
-  each reachable cube: with 15 reachable cubes, 15 trucks go; any more wait until
-  a pickup opens up a new cube. On most levels trucks can
+  then the one with the shortest drive from the ramp. A crate sends a truck to
+  every reachable cube at once: with 15 reachable cubes, 15 trucks go straight
+  away; any more go the moment a pickup opens up a new cube. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
   and the field show which sides are closed.
 - A crate whose color has nothing reachable is marked **blocked**. If every slot
