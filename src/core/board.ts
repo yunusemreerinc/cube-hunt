@@ -1,8 +1,8 @@
 import { EMPTY, type ColorId, type OpenEdges, type Picture } from "./types";
 
 /**
- * The picture being eaten. A cell is *reachable* when it touches an open board
- * edge or an empty (eaten / transparent) cell, so the picture is eaten from
+ * The picture being cleared. A cell is *reachable* when it touches an open board
+ * edge or an empty (cleared / transparent) cell, so the picture is cleared from
  * the outside in.
  */
 export class Board {
@@ -13,9 +13,9 @@ export class Board {
   private readonly reachable: Set<number>[];
   private readonly remainingByColor: number[];
   remaining = 0;
-  /** Point (in cell units) ants come from; targets nearest to it are eaten first. */
-  readonly holeX: number;
-  readonly holeY: number;
+  /** Point (in cell units) where the trucks' tunnel is; cubes nearest to it go first. */
+  readonly tunnelX: number;
+  readonly tunnelY: number;
   readonly edges: OpenEdges;
 
   constructor(picture: Picture, edges: OpenEdges = "all") {
@@ -23,8 +23,8 @@ export class Board {
     this.width = picture.width;
     this.height = picture.height;
     this.cells = Int16Array.from(picture.cells);
-    this.holeX = this.width / 2;
-    this.holeY = this.height + 2;
+    this.tunnelX = this.width / 2;
+    this.tunnelY = this.height + 2;
     this.reachable = picture.palette.map(() => new Set<number>());
     this.remainingByColor = picture.palette.map(() => 0);
     for (let i = 0; i < this.cells.length; i++) {
@@ -63,13 +63,13 @@ export class Board {
     return this.remainingByColor[color] ?? 0;
   }
 
-  /** The reachable cell of `color` nearest the hole, or -1 if none. Deterministic. */
+  /** The reachable cell of `color` nearest the tunnel, or -1 if none. Deterministic. */
   pickTarget(color: ColorId): number {
     let best = -1;
     let bestD = Infinity;
     for (const i of this.reachable[color]) {
-      const x = (i % this.width) + 0.5 - this.holeX;
-      const y = Math.floor(i / this.width) + 0.5 - this.holeY;
+      const x = (i % this.width) + 0.5 - this.tunnelX;
+      const y = Math.floor(i / this.width) + 0.5 - this.tunnelY;
       const d = x * x + y * y;
       if (d < bestD || (d === bestD && i < best)) {
         bestD = d;

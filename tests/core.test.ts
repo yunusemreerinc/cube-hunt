@@ -23,7 +23,7 @@ describe("Board", () => {
     const b = new Board(ring());
     expect(b.reachableCount(0)).toBe(8);
     expect(b.reachableCount(1)).toBe(0);
-    b.eat(b.pickTarget(0)); // nearest to the hole = bottom middle
+    b.eat(b.pickTarget(0)); // nearest to the tunnel = bottom middle
     expect(b.reachableCount(1)).toBe(1);
   });
 
@@ -62,13 +62,13 @@ describe("Game", () => {
 
 describe("levels", () => {
   for (const spec of builtInLevels()) {
-    it(`${spec.picture.name}: ant counts match the picture and greedy play wins`, () => {
+    it(`${spec.picture.name}: truck counts match the picture and greedy play wins`, () => {
       const { level } = buildLevel(spec.picture, spec);
       const cells = spec.picture.palette.map(() => 0);
       spec.picture.cells.forEach((c) => c !== EMPTY && cells[c]++);
-      const ants = spec.picture.palette.map(() => 0);
-      level.columns.flat().forEach((b) => (ants[b.color] += b.count));
-      expect(ants).toEqual(cells);
+      const trucks = spec.picture.palette.map(() => 0);
+      level.columns.flat().forEach((b) => (trucks[b.color] += b.count));
+      expect(trucks).toEqual(cells);
       expect(solveGreedy(level).solved).toBe(true);
     });
   }

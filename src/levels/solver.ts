@@ -48,7 +48,7 @@ function chooseTap(g: Game, force: boolean): number {
     const reach = g.board.reachableCount(b.color);
     if (!force && reach === 0) continue;
     const sameColor = g.slots.filter((s) => s?.color === b.color).length;
-    // Prefer colors with lots of exposed cells that aren't already being eaten,
+    // Prefer colors with lots of exposed cells that aren't already being cleared,
     // and when forced, prefer colors with many cells left (likely to open soon).
     const score = reach / (1 + sameColor) + (force ? g.board.remainingOf(b.color) * 1e-3 : 0);
     if (score > bestScore) {

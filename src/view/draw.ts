@@ -66,55 +66,96 @@ export function label(
   ctx.fillText(text, x, y);
 }
 
-/** A little ant facing `angle`, legs wiggling with `t`. */
-export function ant(
+/**
+ * A tiny top-down pickup truck facing `angle` (front points along +x), painted in
+ * `color`. With `cargo` set it carries one cube of that color on its bed.
+ */
+export function car(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   angle: number,
   color: string,
-  t: number,
+  cargo: boolean,
   s = 1,
+  alpha = 1,
 ): void {
-  const dark = shade(color, -0.6);
+  const dark = shade(color, -0.55);
   ctx.save();
+  ctx.globalAlpha *= alpha;
+
+  // Soft shadow on the table, always cast down and to the right.
+  ctx.save();
+  ctx.translate(x + 1.5 * s, y + 2.5 * s);
+  ctx.rotate(angle);
+  ctx.fillStyle = "rgba(60,30,10,0.22)";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 11.5 * s, 6.5 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
   ctx.translate(x, y);
   ctx.rotate(angle);
   ctx.scale(s, s);
-  ctx.strokeStyle = dark;
-  ctx.lineWidth = 1.3;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  for (let k = -1; k <= 1; k++) {
-    const w = Math.sin(t * 22 + k * 2.1) * 1.8;
-    ctx.moveTo(k * 2.4, 0);
-    ctx.lineTo(k * 2.4 + w, -6);
-    ctx.moveTo(k * 2.4, 0);
-    ctx.lineTo(k * 2.4 - w, 6);
+
+  // Wheels stick out a little past the body.
+  ctx.fillStyle = "#2b2420";
+  for (const wx of [-6.5, 5.5]) {
+    for (const wy of [-5.9, 5.9]) {
+      roundRect(ctx, wx - 2.6, wy - 1.4, 5.2, 2.8, 1.2);
+      ctx.fill();
+    }
   }
-  // antennae
-  ctx.moveTo(5.5, -1);
-  ctx.lineTo(9, -4);
-  ctx.moveTo(5.5, 1);
-  ctx.lineTo(9, 4);
-  ctx.stroke();
+
+  // Body.
   ctx.fillStyle = color;
-  ctx.lineWidth = 1.2;
-  for (const [cx, rx, ry] of [
-    [-5, 4.2, 3.3],
-    [0.3, 2.3, 2],
-    [4.6, 2.8, 2.6],
-  ]) {
-    ctx.beginPath();
-    ctx.ellipse(cx, 0, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-  // eyes
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.arc(5.6, -1.1, 0.9, 0, Math.PI * 2);
-  ctx.arc(5.6, 1.1, 0.9, 0, Math.PI * 2);
+  ctx.strokeStyle = dark;
+  ctx.lineWidth = 1;
+  roundRect(ctx, -10.5, -5.5, 21, 11, 3);
   ctx.fill();
+  ctx.stroke();
+
+  // Hood, a touch lighter, and headlights.
+  ctx.fillStyle = shade(color, 0.18);
+  roundRect(ctx, 4.5, -4.3, 5.4, 8.6, 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff3b0";
+  ctx.beginPath();
+  ctx.arc(10, -3.4, 1, 0, Math.PI * 2);
+  ctx.arc(10, 3.4, 1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Cab: windshield and roof.
+  ctx.fillStyle = "#d5eef8";
+  roundRect(ctx, 2.2, -4.1, 2.4, 8.2, 1);
+  ctx.fill();
+  ctx.fillStyle = shade(color, -0.12);
+  roundRect(ctx, -1.8, -4.3, 4, 8.6, 1.5);
+  ctx.fill();
+
+  // Open bed at the back.
+  ctx.fillStyle = shade(color, -0.4);
+  roundRect(ctx, -9.6, -4.4, 7, 8.8, 1.5);
+  ctx.fill();
+
+  if (cargo) {
+    // The cube sits proud of the bed: drop shadow, beveled sides, lighter top face.
+    const c = 8;
+    const cx = -6.2 - c / 2;
+    const cy = -c / 2;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(cx + 0.9, cy + 0.9, c, c);
+    ctx.fillStyle = shade(color, -0.22);
+    ctx.fillRect(cx, cy, c, c);
+    ctx.fillStyle = shade(color, 0.14);
+    ctx.fillRect(cx + 1.3, cy + 1.3, c - 2.6, c - 2.6);
+    // Same highlight on every side, so it still looks right when the truck turns.
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(cx + 1.7, cy + 1.7, c - 3.4, c - 3.4);
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 0.9;
+    ctx.strokeRect(cx, cy, c, c);
+  }
   ctx.restore();
 }
