@@ -63,8 +63,11 @@ const MAX_SLOTS = 6;
 
 // Pace at 1x. The speed button multiplies all three, so 2x and 3x are exactly
 // double and triple this pace.
-/** Milliseconds between truck dispatches from each slot. */
-const TICK_MS = 260;
+/**
+ * Milliseconds between truck dispatches from each slot: a crate sends its trucks
+ * out quickly, one after another (26 trucks leave in about 2.6 s at 1x).
+ */
+const TICK_MS = 100;
 /** Truck driving speed in design px per second. */
 const CAR_SPEED = 200;
 /** Seconds a truck stops to load its cube. */
