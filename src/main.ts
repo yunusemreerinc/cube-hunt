@@ -75,6 +75,8 @@ const FLY_SPEED = 3.8;
 const FLY_ARC = 26;
 /** Seconds the landing bounce and glow last. */
 const LAND_TIME = 0.45;
+/** Seconds an emptied crate takes to pop out of the dock. */
+const LEAVE_TIME = 0.5;
 /**
  * The stack rising after a tap: each crate takes RISE_TIME to move up a row,
  * starting RISE_STAGGER after the one in front of it, so a wave rolls up the
@@ -185,6 +187,8 @@ class App {
   /** Per ramp lane: trucks sent out but still waiting underground for the lane to clear, oldest first. */
   private particles: Particle[] = [];
   private flyers: Flyer[] = [];
+  /** Empty crates popping out of the dock after their last truck left. */
+  private leavers: { slot: number; color: string; t: number }[] = [];
   /** Per slot: seconds until it may send its next truck, and how much its number is still bumped (1 -> 0). */
   private slotTimer: number[] = new Array(MAX_SLOTS).fill(0);
   private slotBump: number[] = new Array(MAX_SLOTS).fill(0);
@@ -260,6 +264,7 @@ class App {
     this.rampTimer = RAMP_LANES.map(() => 0);
     this.particles = [];
     this.flyers = [];
+    this.leavers = [];
     this.slotTimer.fill(0);
     this.slotBump.fill(0);
     this.slotLand.fill(0);
@@ -387,6 +392,8 @@ class App {
         this.sendTruck(d);
         this.slotTimer[d.slot] = POP_INTERVAL;
         this.slotBump[d.slot] = 1;
+        // That was the crate's last truck: it leaves the dock.
+        if (!this.game.slots[d.slot]) this.leave(d.slot, this.level.picture.palette[d.color]);
       }
     }
 
@@ -440,6 +447,9 @@ class App {
       if (f.t >= 1) this.land(f);
     }
     this.flyers = this.flyers.filter((f) => f.t < 1);
+    for (const l of this.leavers) l.t += dt / LEAVE_TIME;
+    // A leaving crate gives way at once to a new crate flying into its slot.
+    this.leavers = this.leavers.filter((l) => l.t < 1 && !this.game.slots[l.slot] && !this.flyers.some((f) => f.slot === l.slot));
     for (let k = 0; k < MAX_SLOTS; k++) this.slotLand[k] = Math.max(0, this.slotLand[k] - dt / LAND_TIME);
     this.trayRise = this.trayRise.map((v) => (v ?? Infinity) + dt);
 
@@ -585,6 +595,64 @@ class App {
     ctx.translate(x, y - h);
     ctx.rotate(rot);
     ctx.drawImage(img, -drawn / 2, -drawn / 2, drawn, drawn);
+    ctx.restore();
+  }
+
+  /** A crate's last truck has left: it pops out of the dock in a burst of confetti. */
+  private leave(slot: number, color: string): void {
+    this.leavers = this.leavers.filter((l) => l.slot !== slot);
+    this.leavers.push({ slot, color, t: 0 });
+    const r = this.slotRect(slot);
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h * 0.45;
+    const tones = [color, shade(color, 0.45), "#ffffff"];
+    for (let k = 0; k < 14; k++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.4; // mostly upwards
+      const v = 110 + Math.random() * 110;
+      this.particles.push({
+        x: cx + (Math.random() - 0.5) * r.w * 0.5,
+        y: cy + (Math.random() - 0.5) * r.h * 0.3,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v,
+        life: 0.45 + Math.random() * 0.25,
+        color: tones[k % tones.length],
+        size: 3 + Math.random() * 1.5,
+      });
+    }
+  }
+
+  /**
+   * An emptied crate leaving its bay, `t` (0..1) of the way through: a white
+   * flash ring ripples out, and the crate, its count at 0, swells a little,
+   * then shrinks away with a small spin as it fades.
+   */
+  private drawLeaving(x: number, r: { y: number; w: number; h: number }, color: string, t: number): void {
+    const ctx = this.ctx;
+    const grow = t * 16;
+    ctx.save();
+    ctx.globalAlpha = (1 - t) * 0.85;
+    ctx.strokeStyle = "#ffffff";
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12;
+    ctx.lineWidth = 3;
+    roundRect(ctx, x - grow, r.y - grow, r.w + grow * 2, r.h + grow * 2, 14 + grow);
+    ctx.stroke();
+    ctx.restore();
+
+    const swell = 0.25;
+    const k = t < swell ? 0 : (t - swell) / (1 - swell);
+    const scale = t < swell ? 1 + 0.12 * (t / swell) : 1.12 * (1 - k * k);
+    if (scale <= 0.02) return;
+    const cx = x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    ctx.save();
+    ctx.globalAlpha = 1 - k;
+    ctx.translate(cx, cy);
+    ctx.rotate(0.35 * k);
+    ctx.scale(scale, scale);
+    pod(ctx, -r.w / 2, -r.h / 2, r.w, r.h, color);
+    // The countdown ends on 0 as the crate leaves.
+    countLabel(ctx, "0", 0, -r.h / 2 + r.h * 0.4, 25, color);
     ctx.restore();
   }
 
@@ -972,7 +1040,11 @@ class App {
       const x = r.x + dx;
       well(ctx, x, r.y, r.w, r.h);
       if (this.flyers.some((f) => f.slot === i)) return; // drawn in flight, over the tray
-      if (!b) return;
+      if (!b) {
+        const leaving = this.leavers.find((l) => l.slot === i);
+        if (leaving) this.drawLeaving(x, r, leaving.color, leaving.t);
+        return;
+      }
       const color = this.level.picture.palette[b.color];
       // Blocked only if nothing of its color can be reached now or will be once
       // the trucks already out collect their cubes. A blocked crate keeps its
