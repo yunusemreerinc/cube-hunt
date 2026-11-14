@@ -623,8 +623,8 @@ class App {
 
   /**
    * An emptied crate leaving its bay, `t` (0..1) of the way through: a white
-   * flash ring ripples out, and the crate, now showing a check mark, swells a
-   * little, then shrinks away with a small spin as it fades.
+   * flash ring ripples out, and the crate, its count at 0, swells a little,
+   * then shrinks away with a small spin as it fades.
    */
   private drawLeaving(x: number, r: { y: number; w: number; h: number }, color: string, t: number): void {
     const ctx = this.ctx;
@@ -651,24 +651,8 @@ class App {
     ctx.rotate(0.35 * k);
     ctx.scale(scale, scale);
     pod(ctx, -r.w / 2, -r.h / 2, r.w, r.h, color);
-    // A white check mark with a dark edge: this crate is done.
-    const mid = -r.h / 2 + (r.h - Math.max(3, r.h * 0.1)) / 2;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    const path = () => {
-      ctx.beginPath();
-      ctx.moveTo(-11, mid);
-      ctx.lineTo(-3, mid + 8);
-      ctx.lineTo(12, mid - 9);
-    };
-    ctx.strokeStyle = shade(color, -0.6);
-    ctx.lineWidth = 8;
-    path();
-    ctx.stroke();
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 4.5;
-    path();
-    ctx.stroke();
+    // The countdown ends on 0 as the crate leaves.
+    countLabel(ctx, "0", 0, -r.h / 2 + r.h * 0.4, 25, color);
     ctx.restore();
   }
 
