@@ -232,3 +232,116 @@ export function socketSprite(px: number): HTMLCanvasElement {
   g.fill();
   return canvas;
 }
+
+/**
+ * A glossy rounded block for the slots and the tray, in the same style as the
+ * board's cubes: soft shadow, darker base for depth, a face that fades from light
+ * to the full color, a gloss band and a crisp edge.
+ */
+export function pod(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  r = 14,
+): void {
+  const depth = Math.max(3, h * 0.1);
+  const face = h - depth;
+  ctx.save();
+  ctx.shadowColor = "rgba(80,45,15,0.28)";
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 4;
+  ctx.fillStyle = shade(color, -0.32);
+  roundRect(ctx, x, y + depth, w, face, r);
+  ctx.fill();
+  ctx.restore();
+
+  const grad = ctx.createLinearGradient(0, y, 0, y + face);
+  grad.addColorStop(0, shade(color, 0.22));
+  grad.addColorStop(0.6, color);
+  grad.addColorStop(1, shade(color, -0.05));
+  ctx.fillStyle = grad;
+  roundRect(ctx, x, y, w, face, r);
+  ctx.fill();
+
+  const gloss = ctx.createLinearGradient(0, y + 2, 0, y + face * 0.48);
+  gloss.addColorStop(0, "rgba(255,255,255,0.4)");
+  gloss.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gloss;
+  roundRect(ctx, x + w * 0.08, y + 2.5, w * 0.84, face * 0.46, r * 0.75);
+  ctx.fill();
+
+  ctx.save();
+  ctx.globalAlpha *= 0.35;
+  ctx.strokeStyle = shade(color, -0.45);
+  ctx.lineWidth = 1;
+  roundRect(ctx, x + 0.5, y + 0.5, w - 1, face - 1, r);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * A crate's number: white with a soft shadow, or dark on light colors so it
+ * always stays readable.
+ */
+export function numeral(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.font = `800 ${size}px "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  if (luminance(color) > 0.72) {
+    ctx.fillStyle = shade(color, -0.65);
+  } else {
+    ctx.shadowColor = shade(color, -0.6);
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1.5;
+    ctx.fillStyle = "#ffffff";
+  }
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+/** A soft recessed well: where an empty slot waits for a crate. */
+export function well(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 14): void {
+  ctx.fillStyle = "rgba(110,70,30,0.13)";
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  // Inner shadow fading down from the top edge, light catching the bottom lip.
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, "rgba(80,45,15,0.2)");
+  g.addColorStop(0.35, "rgba(80,45,15,0)");
+  ctx.fillStyle = g;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y + h - 0.5);
+  ctx.lineTo(x + w - r, y + h - 0.5);
+  ctx.stroke();
+}
+
+/** A small rounded label, e.g. "blocked" under a slot. */
+export function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number): void {
+  ctx.save();
+  ctx.font = `800 10px "Nunito", ui-rounded, system-ui, sans-serif`;
+  const w = ctx.measureText(text).width + 14;
+  const h = 16;
+  ctx.fillStyle = "rgba(60,35,15,0.78)";
+  roundRect(ctx, cx - w / 2, cy - h / 2, w, h, h / 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, cx, cy + 0.5);
+  ctx.restore();
+}
