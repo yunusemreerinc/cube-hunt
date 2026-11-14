@@ -47,6 +47,12 @@ const LANE = 5.8;
 const TUNNEL = { x: W / 2, y: 496, w: 112, h: 36 };
 /** The ramp has three lanes up to the road, as offsets from its middle. */
 const RAMP_LANES = [-34, 0, 34];
+/**
+ * Trucks in the same ramp lane leave this far apart (design px, center to
+ * center, at scale 1), so a crate's trucks drive in a line you can count
+ * instead of on top of each other. A truck is 21 long.
+ */
+const CONVOY_GAP = 30;
 const SLOT_Y = 540;
 const SLOT_H = 66;
 const TRAY_Y = 636;
@@ -136,6 +142,9 @@ class App {
   /** Cells as currently drawn; a cube leaves when its truck picks it up, not when the truck is sent. */
   private shown!: Int16Array;
   private cars: Car[] = [];
+  /** Trucks waiting in the tunnel per ramp lane, and seconds until each lane's next one may leave. */
+  private ramp: Car[][] = RAMP_LANES.map(() => []);
+  private rampTimer: number[] = RAMP_LANES.map(() => 0);
   /** Per ramp lane: trucks sent out but still waiting underground for the lane to clear, oldest first. */
   private particles: Particle[] = [];
   private flyers: Flyer[] = [];
@@ -203,6 +212,8 @@ class App {
     this.sprites.clear();
     this.startCounts.clear();
     this.cars = [];
+    this.ramp = RAMP_LANES.map(() => []);
+    this.rampTimer = RAMP_LANES.map(() => 0);
     this.particles = [];
     this.flyers = [];
     this.slotBoostUsed = false;
@@ -323,6 +334,16 @@ class App {
       }
     }
 
+    // Each ramp lane lets one truck out at a time, a short gap behind the last.
+    const spacing = (CONVOY_GAP * this.carScale()) / CAR_SPEED;
+    this.ramp.forEach((queue, k) => {
+      this.rampTimer[k] -= sdt;
+      if (queue.length > 0 && this.rampTimer[k] <= 0) {
+        this.cars.push(queue.shift()!);
+        this.rampTimer[k] = spacing;
+      }
+    });
+
     for (const c of this.cars) {
       if (c.state === "load") {
         // Turn to face the cube while loading it.
@@ -361,15 +382,16 @@ class App {
     for (const f of this.flyers) f.t += dt * 5.5;
     this.flyers = this.flyers.filter((f) => f.t < 1);
 
-    if (this.game.status !== "playing" && this.cars.length === 0) {
+    if (this.game.status !== "playing" && this.cars.length === 0 && this.ramp.every((q) => q.length === 0)) {
       this.overlayDelay += dt;
     }
   }
 
   /** Sends a truck up the ramp lane with the shortest drive to its cube, right away. */
   private sendTruck(d: Dispatch): void {
-    // Trucks never wait for each other: they drive straight through any truck in
-    // their way, so a crate's trucks all leave at once.
+    // Trucks never stop for each other: where routes cross they drive straight
+    // through. They do leave each ramp lane in a spaced-out line, so each one
+    // can be seen on its own.
     let lane = 0;
     let route: Pt[] = [];
     let bestScore = Infinity;
@@ -384,7 +406,7 @@ class App {
     });
     const sx = TUNNEL.x + RAMP_LANES[lane];
     const sy = TUNNEL.y + TUNNEL.h * 0.2;
-    this.cars.push({
+    this.ramp[lane].push({
       x: sx,
       y: sy,
       sx,

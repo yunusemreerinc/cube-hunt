@@ -44,10 +44,10 @@ Rubber Duck, Ice Cream and Watermelon.
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
 - Tapping a crate moves it into a free **slot**. Its trucks drive up out of the
-  ramp all at once and follow the road around the field. Each turns in at an open
+  ramp right away, spaced out in a line so you can see each one, and follow the road around the field. Each turns in at an open
   side, drives through cleared space to one reachable cube of its color, loads it
-  and carries it back down the ramp. Trucks never wait for each other: they
-  drive straight through any truck in their way. On the road they keep to a lane
+  and carries it back down the ramp. Trucks never stop for each other: where
+  their routes cross, they drive straight through. On the road they keep to a lane
   each way.
 - A cube is **reachable** when a truck can drive up to it: it touches an open edge
   of the field, or cleared space that connects to one. A cube only counts as
