@@ -471,6 +471,51 @@ export function roundButton(ctx: CanvasRenderingContext2D, cx: number, cy: numbe
   ctx.stroke();
 }
 
+/** The tray's shelf: a light cream panel with a soft shadow, a fine border and a top highlight. */
+export function shelf(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 20): void {
+  ctx.save();
+  ctx.shadowColor = "rgba(90,55,20,0.22)";
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 4;
+  const body = ctx.createLinearGradient(0, y, 0, y + h);
+  body.addColorStop(0, "#fcf7ef");
+  body.addColorStop(1, "#efe3d1");
+  ctx.fillStyle = body;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = "rgba(150,105,60,0.22)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, r - 0.5);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,0.9)";
+  ctx.beginPath();
+  ctx.moveTo(x + r, y + 1.5);
+  ctx.lineTo(x + w - r, y + 1.5);
+  ctx.stroke();
+}
+
+/** A softly recessed lane in the shelf that one column of crates sits in. */
+export function lane(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 16): void {
+  ctx.fillStyle = "rgba(140,95,50,0.08)";
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + 14);
+  g.addColorStop(0, "rgba(110,70,30,0.12)");
+  g.addColorStop(1, "rgba(110,70,30,0)");
+  ctx.fillStyle = g;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fill();
+}
+
+/** A small chip with a flat label, e.g. "+3 more" at the foot of a tray lane. */
+export function chip(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, tone: string): void {
+  const w = labelWidth(ctx, text, 10) + 14;
+  const h = 15;
+  pod(ctx, cx - w / 2, cy - h / 2, w, h, tone, h / 2);
+  countLabel(ctx, text, cx, cy - 0.6, 10, tone, true);
+}
+
 /** A slate dock that holds the slots, with a soft shadow and a highlight along its top edge. */
 export function dock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 20): void {
   ctx.save();
