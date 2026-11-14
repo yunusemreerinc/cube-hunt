@@ -67,6 +67,23 @@ const TRAY_ROWS = 3;
 const BLOCK = { w: 68, h: 52, gx: 10, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
+/** A tapped crate's flight into its slot: speed (1/seconds), and how high it arcs (design px). */
+const FLY_SPEED = 3.8;
+const FLY_ARC = 26;
+/** Seconds the landing bounce and glow last. */
+const LAND_TIME = 0.45;
+/**
+ * The stack rising after a tap: each crate takes RISE_TIME to move up a row,
+ * starting RISE_STAGGER after the one in front of it, so a wave rolls up the
+ * column; then a shine sweeps across the new front crate for SHEEN_TIME.
+ */
+const RISE_TIME = 0.32;
+const RISE_STAGGER = 0.06;
+const SHEEN_TIME = 0.4;
+/** How tray crates look at each depth: front, one back, two back, and just out of sight. */
+const TRAY_ALPHA = [1, 0.55, 0.32, 0];
+const TRAY_INSET = [0, 5, 9, 12];
+const TRAY_LABEL = [25, 19, 19, 17];
 
 // Pace at 1x. A crate sends a truck as soon as a cube is reachable, then one
 // every POP_INTERVAL; the speed button multiplies driving, loading and that
@@ -168,6 +185,10 @@ class App {
   /** Per slot: seconds until it may send its next truck, and how much its number is still bumped (1 -> 0). */
   private slotTimer: number[] = new Array(MAX_SLOTS).fill(0);
   private slotBump: number[] = new Array(MAX_SLOTS).fill(0);
+  /** Per slot: how much of its landing effect is left (1 just landed -> 0). */
+  private slotLand: number[] = new Array(MAX_SLOTS).fill(0);
+  /** Per tray column: seconds since its crates started rising (Infinity when settled). */
+  private trayRise: number[] = [];
   private buttons: Button[] = [];
   private speed = 1;
   private slotBoostUsed = false;
@@ -238,6 +259,8 @@ class App {
     this.flyers = [];
     this.slotTimer.fill(0);
     this.slotBump.fill(0);
+    this.slotLand.fill(0);
+    this.trayRise = [];
     this.slotBoostUsed = false;
     this.overlayDelay = 0;
   }
@@ -337,6 +360,7 @@ class App {
     const slot = this.game.tap(col);
     if (slot >= 0) {
       this.flyers.push({ slot, fromX: from.x, fromY: from.y, t: 0, color, count });
+      this.trayRise[col] = 0; // the crates behind move up a row
     }
   }
 
@@ -408,8 +432,13 @@ class App {
     }
     this.particles = this.particles.filter((p) => p.life > 0);
 
-    for (const f of this.flyers) f.t += dt * 5.5;
+    for (const f of this.flyers) {
+      f.t += dt * FLY_SPEED;
+      if (f.t >= 1) this.land(f);
+    }
     this.flyers = this.flyers.filter((f) => f.t < 1);
+    for (let k = 0; k < MAX_SLOTS; k++) this.slotLand[k] = Math.max(0, this.slotLand[k] - dt / LAND_TIME);
+    this.trayRise = this.trayRise.map((v) => (v ?? Infinity) + dt);
 
     if (this.game.status !== "playing" && this.cars.length === 0 && this.ramp.every((q) => q.length === 0)) {
       this.overlayDelay += dt;
@@ -556,6 +585,25 @@ class App {
     ctx.restore();
   }
 
+  /** A crate lands in its slot: it bounces, a glow ripples out, and a few sparkles pop. */
+  private land(f: Flyer): void {
+    this.slotLand[f.slot] = 1;
+    const r = this.slotRect(f.slot);
+    for (let k = 0; k < 8; k++) {
+      const a = -Math.PI * (0.1 + 0.8 * (k / 7)); // fan out upwards from the top edge
+      const v = 90 + Math.random() * 70;
+      this.particles.push({
+        x: r.x + r.w / 2 + Math.cos(a) * r.w * 0.45,
+        y: r.y + 2,
+        vx: Math.cos(a) * v,
+        vy: Math.sin(a) * v,
+        life: 0.32 + Math.random() * 0.15,
+        color: k % 2 ? "#ffffff" : shade(f.color, 0.5),
+        size: 3.5,
+      });
+    }
+  }
+
   /** A little dust where the cube lands in the bed. */
   private landPuff(c: Car): void {
     const bed = this.bedPoint(c);
@@ -624,6 +672,7 @@ class App {
     this.drawTunnel();
     this.drawSlots();
     this.drawTray();
+    this.drawFlyers();
     this.drawBottomBar();
     const carScale = this.carScale();
     for (const c of this.cars) {
@@ -919,17 +968,7 @@ class App {
       const r = this.slotRect(i);
       const x = r.x + dx;
       well(ctx, x, r.y, r.w, r.h);
-      const flying = this.flyers.find((f) => f.slot === i);
-      if (flying) {
-        const t = 1 - (1 - flying.t) ** 3;
-        const fx = flying.fromX + (x - flying.fromX) * t;
-        const fy = flying.fromY + (r.y - flying.fromY) * t;
-        const fw = BLOCK.w + (r.w - BLOCK.w) * t;
-        const fh = BLOCK.h + (r.h - BLOCK.h) * t;
-        pod(ctx, fx, fy, fw, fh, flying.color);
-        countLabel(ctx, String(flying.count), fx + fw / 2, fy + fh * 0.42, 25, flying.color);
-        return;
-      }
+      if (this.flyers.some((f) => f.slot === i)) return; // drawn in flight, over the tray
       if (!b) return;
       const color = this.level.picture.palette[b.color];
       // Blocked only if nothing of its color can be reached now or will be once
@@ -937,6 +976,26 @@ class App {
       // full color so you can still tell what it is; stripes, a quieter number
       // and a badge say it is waiting.
       const waiting = this.game.slotBlocked(i);
+      // Just landed: a glow ripples out of the bay, and the crate squashes and
+      // springs back from its base with a little wobble.
+      const land = this.slotLand[i] ?? 0;
+      if (land > 0) {
+        const grow = (1 - land) * 12;
+        ctx.save();
+        ctx.globalAlpha = land * 0.9;
+        ctx.strokeStyle = shade(color, 0.45);
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 3;
+        roundRect(ctx, x - grow, r.y - grow, r.w + grow * 2, r.h + grow * 2, 14 + grow);
+        ctx.stroke();
+        ctx.restore();
+      }
+      const wob = land > 0 ? Math.sin((1 - land) * Math.PI * 3) * land * 0.1 : 0;
+      ctx.save();
+      ctx.translate(x + r.w / 2, r.y + r.h);
+      ctx.scale(1 + wob, 1 - wob);
+      ctx.translate(-(x + r.w / 2), -(r.y + r.h));
       pod(ctx, x, r.y, r.w, r.h, color);
       if (waiting) holdStripes(ctx, x, r.y, r.w, r.h, color);
       ctx.save();
@@ -962,30 +1021,66 @@ class App {
       roundRect(ctx, barX + 1, barY + 0.8, Math.max(0, fillW - 2), barH * 0.35, barH * 0.2);
       ctx.fill();
       ctx.restore();
+      ctx.restore();
       if (waiting) pill(ctx, "blocked", x + r.w / 2, r.y + r.h + 9);
     });
+  }
+
+  /**
+   * Crates on their way from the tray to a slot: eased in, arcing up and
+   * swelling a little at the top of the arc, then settling to the slot's size.
+   */
+  private drawFlyers(): void {
+    const ctx = this.ctx;
+    for (const f of this.flyers) {
+      const r = this.slotRect(f.slot);
+      const t = 1 - (1 - f.t) ** 3;
+      const lift = Math.sin(Math.PI * f.t);
+      const grow = 1 + 0.12 * lift;
+      const fw = (BLOCK.w + (r.w - BLOCK.w) * t) * grow;
+      const fh = (BLOCK.h + (r.h - BLOCK.h) * t) * grow;
+      const cx = f.fromX + BLOCK.w / 2 + (r.x + r.w / 2 - f.fromX - BLOCK.w / 2) * t;
+      const cy = f.fromY + BLOCK.h / 2 + (r.y + r.h / 2 - f.fromY - BLOCK.h / 2) * t - FLY_ARC * lift;
+      pod(ctx, cx - fw / 2, cy - fh / 2, fw, fh, f.color);
+      countLabel(ctx, String(f.count), cx, cy - fh / 2 + fh * 0.42, 25 * grow, f.color);
+    }
   }
 
   private drawTray(): void {
     const ctx = this.ctx;
     this.game.columns.forEach((col, c) => {
+      // Crates further back are smaller and fainter, like a stack waiting its turn.
+      // After a tap they rise a row in a cascade, front first: each springs up,
+      // overshooting a touch before it settles, stretching a little while it
+      // moves, and brightens and widens into its new depth. A shine then sweeps
+      // across the new front crate.
+      const since = this.trayRise[c] ?? Infinity;
       for (let row = TRAY_ROWS - 1; row >= 0; row--) {
         const b = col[row];
         if (!b) continue;
+        const p = Math.max(0, Math.min(1, (since - row * RISE_STAGGER) / RISE_TIME));
+        const rise = 1 - easeOutBack(p); // rows still to go; a little below 0 when overshooting
+        const moving = Math.sin(Math.PI * p);
+        const depth = row + Math.max(0, rise);
         const r = this.blockRect(c, row);
+        const y = r.y + rise * (BLOCK.h + BLOCK.gy);
         const color = this.level.picture.palette[b.color];
+        const alpha = atDepth(TRAY_ALPHA, depth);
+        if (alpha <= 0.01) continue;
+        const inset = atDepth(TRAY_INSET, depth);
+        const w = (r.w - inset * 2) * (1 - 0.05 * moving);
+        const h = r.h * (1 + 0.1 * moving);
+        const top = y + r.h - h;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        pod(ctx, r.x + r.w / 2 - w / 2, top, w, h, color);
+        const front = depth < 0.5;
+        countLabel(ctx, String(b.count), r.x + r.w / 2, top + h * 0.42, atDepth(TRAY_LABEL, depth), color, !front);
+        ctx.restore();
         if (row === 0) {
-          pod(ctx, r.x, r.y, r.w, r.h, color);
-          countLabel(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.42, 25, color);
+          const q = (since - RISE_TIME) / SHEEN_TIME;
+          if (q > 0 && q < 1) sheen(ctx, r.x + r.w / 2 - w / 2, top, w, h, q);
           this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
-        } else {
-          // Crates further back are smaller and fainter, like a stack waiting its turn.
-          ctx.save();
-          ctx.globalAlpha = row === 1 ? 0.55 : 0.32;
-          const inset = row === 1 ? 5 : 9;
-          pod(ctx, r.x + inset, r.y, r.w - inset * 2, r.h, color);
-          countLabel(ctx, String(b.count), r.x + r.w / 2, r.y + r.h * 0.42, 19, color, true);
-          ctx.restore();
         }
       }
       const hidden = col.length - TRAY_ROWS;
@@ -1103,6 +1198,40 @@ class App {
 }
 
 /** A progress-bar color that shows up on the crate: white, or dark on light crates. */
+/** Ease-out with a small overshoot past 1 before settling: a springy arrival. */
+function easeOutBack(t: number): number {
+  const c = 1.9;
+  const u = t - 1;
+  return 1 + (c + 1) * u * u * u + c * u * u;
+}
+
+/**
+ * A glossy shine sweeping across a crate's face, `q` (0..1) of the way across:
+ * a slanted white band clipped to the crate, brightest midway.
+ */
+function sheen(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, q: number): void {
+  const face = h - Math.max(3, h * 0.1);
+  ctx.save();
+  roundRect(ctx, x, y, w, face, 14);
+  ctx.clip();
+  ctx.translate(x - w * 0.3 + w * 1.6 * q, y + face / 2);
+  ctx.rotate(0.35);
+  const band = ctx.createLinearGradient(-12, 0, 12, 0);
+  band.addColorStop(0, "rgba(255,255,255,0)");
+  band.addColorStop(0.5, `rgba(255,255,255,${0.6 * Math.sin(Math.PI * q)})`);
+  band.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = band;
+  ctx.fillRect(-12, -face, 24, face * 2);
+  ctx.restore();
+}
+
+/** Reads a per-depth table (front = 0) at a fractional depth, blending between rows. */
+function atDepth(table: number[], depth: number): number {
+  const d = Math.max(0, Math.min(table.length - 1, depth));
+  const i = Math.min(table.length - 2, Math.floor(d));
+  return table[i] + (table[i + 1] - table[i]) * (d - i);
+}
+
 function luminanceFill(color: string): string {
   return luminance(color) > 0.72 ? shade(color, -0.55) : "rgba(255,255,255,0.9)";
 }
