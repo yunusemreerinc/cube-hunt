@@ -698,13 +698,14 @@ class App {
     const sp = { x: 326, y: 14, w: 82, h: 38 };
     const spMid = sp.y + (sp.h - Math.max(3, sp.h * 0.1)) / 2;
     pod(ctx, sp.x, sp.y, sp.w, sp.h, "#3fb6f2", 16);
-    // Arrows and label centered together as one group.
-    const spText = `${this.speed}x`;
+    // The label stays put: the layout is centered for the widest case (three
+    // arrows), and the arrows sit just left of the label, growing leftwards.
+    const textW = labelWidth(ctx, "3x", 17);
+    const groupW = speedArrowsWidth(3, 13) + 6 + textW;
+    const labelX = sp.x + (sp.w + groupW) / 2 - textW / 2;
     const arrowsW = speedArrowsWidth(this.speed, 13);
-    const textW = labelWidth(ctx, spText, 17);
-    const spLeft = sp.x + (sp.w - (arrowsW + 6 + textW)) / 2;
-    speedArrows(ctx, this.speed, spLeft, spMid, 13, "#3fb6f2");
-    countLabel(ctx, spText, spLeft + arrowsW + 6 + textW / 2, spMid, 17, "#3fb6f2");
+    speedArrows(ctx, this.speed, labelX - textW / 2 - 6 - arrowsW, spMid, 13, "#3fb6f2");
+    countLabel(ctx, `${this.speed}x`, labelX, spMid, 17, "#3fb6f2");
     this.button(sp.x, sp.y, sp.w, sp.h, () => (this.speed = (this.speed % 3) + 1));
   }
 
