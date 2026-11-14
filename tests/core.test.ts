@@ -107,3 +107,22 @@ describe("Board edges", () => {
     expect(new Board(p, "all").reachableCount(0)).toBe(8);
   });
 });
+
+describe("sealed gaps", () => {
+  it("a transparent gap inside the picture opens only once trucks can reach it", () => {
+    // 3x4, color 0 everywhere except a transparent cell at (1,1); only the bottom is open.
+    //   0 0 0
+    //   0 . 0
+    //   0 0 0
+    //   0 0 0
+    const cells = Int16Array.from([0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0]);
+    const b = new Board({ name: "gap", width: 3, height: 4, cells, palette: ["#000"] }, "bottom");
+    expect(b.isOpen(4)).toBe(false);
+    // Only the bottom row is reachable; the cells around the gap are not.
+    expect(b.reachableCells(0).sort((x, y) => x - y)).toEqual([9, 10, 11]);
+    b.eat(10);
+    b.eat(7); // now (1,2) is cleared, which touches the gap
+    expect(b.isOpen(4)).toBe(true);
+    expect(b.reachableCells(0)).toEqual(expect.arrayContaining([1, 3, 5]));
+  });
+});

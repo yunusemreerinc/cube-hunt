@@ -40,11 +40,13 @@ npm run build      # type-check, then build the single-file game into dist/
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
 - Tapping a crate moves it into a free **slot**. Its trucks drive up out of the
-  ramp one by one. Each loads one reachable cube of the same color and carries it
-  back down the ramp.
-- A cube is **reachable** when it touches an open edge of the board or a cube that
-  has already been taken. On most levels trucks can only drive in from the bottom
-  (the side with the ramp). The walls show which edges are closed.
+  ramp one by one and follow the road around the field. Each turns in at an open
+  side, drives through cleared space to one reachable cube of its color, loads it
+  and carries it back down the ramp.
+- A cube is **reachable** when a truck can drive up to it: it touches an open edge
+  of the field, or cleared space that connects to one. On most levels trucks can
+  only turn in from the bottom (the side with the ramp). The walls between the road
+  and the field show which sides are closed.
 - A crate whose color has nothing reachable is marked **blocked**. If every slot
   is full and every crate in them is blocked, you're out of moves.
 - Boosters: **+1 Slot** once per level. **Your image** turns any picture into a
@@ -61,7 +63,9 @@ src/levels/
   generator.ts picture -> tray of crates; picks a tray that hits a difficulty target
   solver.ts    greedy solver (proves a level is winnable) + random-player win rate
   image.ts     uploaded image -> picture (downscale + k-means color reduction)
-src/view/      canvas drawing helpers (tiles, labels, trucks)
+src/view/
+  draw.ts      canvas drawing helpers (tiles, labels, trucks)
+  roads.ts     truck routes: road around the field, then through cleared cells
 src/main.ts    the app: layout, input, animation, overlays
 vite.config.ts build settings, including the step that inlines the code into index.html
 ```
@@ -90,5 +94,5 @@ Truck totals always match the picture exactly, and the tests check this.
 - More boosters: pick any crate from the tray, a cannon that clears a color, undo.
 - Level select, saved progress, stars for finishing without boosters.
 - A hand-made level editor, and more and larger pictures.
-- Sound, haptics, and trucks that follow roads around the board instead of straight lines.
+- Sound, haptics, and trucks that queue politely instead of driving through each other.
 - If it's fun: port `src/core` and `src/levels` to C# for a Unity mobile build.
