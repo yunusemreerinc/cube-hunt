@@ -908,10 +908,7 @@ class App {
       const hidden = col.length - TRAY_ROWS;
       if (hidden > 0) {
         const r = this.blockRect(c, TRAY_ROWS);
-        ctx.font = `800 12px ui-rounded, system-ui, sans-serif`;
-        ctx.fillStyle = "rgba(107,69,35,0.7)";
-        ctx.textAlign = "center";
-        ctx.fillText(`+${hidden} more`, r.x + r.w / 2, r.y + 2);
+        countLabel(ctx, `+${hidden} more`, r.x + r.w / 2, r.y - 2, 12, "#b5763c", true);
       }
     });
   }

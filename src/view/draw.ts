@@ -355,18 +355,12 @@ export function well(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
 
 /** A small rounded label, e.g. "blocked" under a slot. */
 export function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number): void {
-  ctx.save();
-  ctx.font = `800 10px "Nunito", ui-rounded, system-ui, sans-serif`;
-  const w = ctx.measureText(text).width + 14;
+  // A small glossy chip, lettered like the other labels.
+  const tone = "#6e4a2e";
+  const w = labelWidth(ctx, text, 10) + 16;
   const h = 16;
-  ctx.fillStyle = "rgba(60,35,15,0.78)";
-  roundRect(ctx, cx - w / 2, cy - h / 2, w, h, h / 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, cx, cy + 0.5);
-  ctx.restore();
+  pod(ctx, cx - w / 2, cy - h / 2, w, h, tone, h / 2);
+  countLabel(ctx, text, cx, cy - 0.6, 10, tone, true);
 }
 
 /**
@@ -499,7 +493,7 @@ export function badge(ctx: CanvasRenderingContext2D, text: string, cx: number, c
   ctx.fill();
   ctx.restore();
   ctx.save();
-  ctx.font = `800 13px "Nunito", ui-rounded, system-ui, sans-serif`;
+  labelFont(ctx, 13);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = shade(color, -0.35);
