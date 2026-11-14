@@ -24,48 +24,6 @@ export function roundRect(
   ctx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
 }
 
-/** A chunky 3D-ish tile: darker base, colored face, light top edge. */
-export function tile(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  color: string,
-  depth: number,
-  r: number,
-): void {
-  ctx.fillStyle = shade(color, -0.32);
-  roundRect(ctx, x, y + depth, w, h - depth, r);
-  ctx.fill();
-  ctx.fillStyle = color;
-  roundRect(ctx, x, y, w, h - depth, r);
-  ctx.fill();
-  ctx.fillStyle = "rgba(255,255,255,0.28)";
-  roundRect(ctx, x + w * 0.12, y + 2, w * 0.76, Math.max(2, (h - depth) * 0.18), r / 2);
-  ctx.fill();
-}
-
-/** Big bubbly number, readable on any block color. */
-export function label(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  size: number,
-  color: string,
-): void {
-  ctx.font = `800 ${size}px ui-rounded, "SF Pro Rounded", "Nunito", system-ui, sans-serif`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.lineJoin = "round";
-  ctx.lineWidth = size * 0.22;
-  ctx.strokeStyle = shade(color, -0.55);
-  ctx.strokeText(text, x, y);
-  ctx.fillStyle = "#fff";
-  ctx.fillText(text, x, y);
-}
-
 /**
  * A tiny top-down pickup truck facing `angle` (front points along +x), painted in
  * `color`. With `cargo` set it carries one cube of that color on its bed.
@@ -375,5 +333,111 @@ export function holdStripes(
     ctx.closePath();
     ctx.fill();
   }
+  ctx.restore();
+}
+
+export type IconKind = "restart" | "prev" | "next" | "fast" | "picture";
+
+/**
+ * A white line icon centered on (cx, cy), drawn as shapes rather than font
+ * glyphs so it looks the same on every device. `size` is roughly its height.
+ */
+export function icon(
+  ctx: CanvasRenderingContext2D,
+  kind: IconKind,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string,
+): void {
+  const s = size / 2;
+  ctx.save();
+  ctx.shadowColor = shade(color, -0.6);
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetY = 1.2;
+  ctx.strokeStyle = "#fff";
+  ctx.fillStyle = "#fff";
+  ctx.lineWidth = Math.max(2, size * 0.16);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  switch (kind) {
+    case "restart": {
+      // Three-quarter circle with an arrowhead at its open end.
+      const r = s * 0.78;
+      const end = -Math.PI * 0.35;
+      ctx.arc(cx, cy, r, -Math.PI * 0.05 + Math.PI * 0.5, end + Math.PI * 2 - 0.2, false);
+      ctx.stroke();
+      const ax = cx + r * Math.cos(end);
+      const ay = cy + r * Math.sin(end);
+      const h = s * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(ax + h * 0.95, ay - h * 0.2);
+      ctx.lineTo(ax - h * 0.1, ay - h * 0.65);
+      ctx.lineTo(ax - h * 0.15, ay + h * 0.55);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "prev":
+    case "next": {
+      const d = kind === "prev" ? 1 : -1;
+      ctx.moveTo(cx + d * s * 0.35, cy - s * 0.7);
+      ctx.lineTo(cx - d * s * 0.35, cy);
+      ctx.lineTo(cx + d * s * 0.35, cy + s * 0.7);
+      ctx.stroke();
+      break;
+    }
+    case "fast": {
+      // Two play triangles side by side.
+      for (const ox of [-s * 0.55, s * 0.35]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + ox - s * 0.45, cy - s * 0.62);
+        ctx.lineTo(cx + ox + s * 0.5, cy);
+        ctx.lineTo(cx + ox - s * 0.45, cy + s * 0.62);
+        ctx.closePath();
+        ctx.fill();
+      }
+      break;
+    }
+    case "picture": {
+      // A framed photo: border, a hill and a sun.
+      ctx.lineWidth = Math.max(1.6, size * 0.11);
+      roundRect(ctx, cx - s, cy - s * 0.78, s * 2, s * 1.56, s * 0.3);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.75, cy + s * 0.5);
+      ctx.lineTo(cx - s * 0.2, cy - s * 0.1);
+      ctx.lineTo(cx + s * 0.15, cy + s * 0.25);
+      ctx.lineTo(cx + s * 0.4, cy + s * 0.02);
+      ctx.lineTo(cx + s * 0.75, cy + s * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx + s * 0.42, cy - s * 0.35, s * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+/** A small white counter badge, e.g. how many boosters are left. */
+export function badge(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, color: string): void {
+  ctx.save();
+  ctx.fillStyle = "#fff";
+  ctx.shadowColor = "rgba(0,0,0,0.18)";
+  ctx.shadowBlur = 3;
+  ctx.shadowOffsetY = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  ctx.font = `800 13px "Nunito", ui-rounded, system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = shade(color, -0.35);
+  ctx.fillText(text, cx, cy + 0.5);
   ctx.restore();
 }

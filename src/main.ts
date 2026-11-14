@@ -4,10 +4,12 @@ import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel } from "./levels/generator";
 import { pictureFromFile } from "./levels/image";
 import {
+  badge,
   car,
   cubeSprite,
   holdStripes,
-  label,
+  icon,
+  type IconKind,
   luminance,
   numeral,
   pill,
@@ -15,7 +17,6 @@ import {
   roundRect,
   shade,
   socketSprite,
-  tile,
   well,
 } from "./view/draw";
 import { RoadMap, type Pt } from "./view/roads";
@@ -618,14 +619,15 @@ class App {
 
   private drawTopBar(): void {
     const ctx = this.ctx;
-    const round = (x: number, y: number, r: number, color: string, text: string, fn: () => void) => {
-      tile(ctx, x - r, y - r, r * 2, r * 2 + 4, color, 4, r);
-      label(ctx, text, x, y, r * 0.95, color);
-      this.button(x - r, y - r, r * 2, r * 2 + 4, fn);
+    const round = (x: number, y: number, r: number, color: string, kind: IconKind, fn: () => void) => {
+      const h = r * 2 + 4;
+      pod(ctx, x - r, y - r, r * 2, h, color, r);
+      icon(ctx, kind, x, y - r + (h - Math.max(3, h * 0.1)) / 2, r * 0.95, color);
+      this.button(x - r, y - r, r * 2, h, fn);
     };
-    round(30, 32, 18, "#8f7cf0", "↻", () => this.startLevel());
-    round(70, 32, 15, "#f0a35c", "‹", () => this.goToLevel(this.levelIndex - 1));
-    round(300, 32, 15, "#f0a35c", "›", () => this.goToLevel(this.levelIndex + 1));
+    round(30, 32, 18, "#8f7cf0", "restart", () => this.startLevel());
+    round(70, 32, 15, "#f0a35c", "prev", () => this.goToLevel(this.levelIndex - 1));
+    round(300, 32, 15, "#f0a35c", "next", () => this.goToLevel(this.levelIndex + 1));
 
     const title = this.custom
       ? this.level.picture.name
@@ -642,9 +644,10 @@ class App {
     ctx.fillText(difficulty, 185, 44);
 
     // Speed toggle
-    tile(ctx, 330, 16, 76, 36, "#3fb6f2", 4, 14);
-    label(ctx, `▶▶ ${this.speed}x`, 368, 32, 16, "#3fb6f2");
-    this.button(330, 16, 76, 36, () => (this.speed = (this.speed % 3) + 1));
+    pod(ctx, 330, 14, 76, 38, "#3fb6f2", 16);
+    icon(ctx, "fast", 353, 31, 18, "#3fb6f2");
+    numeral(ctx, `${this.speed}x`, 384, 31, 17, "#3fb6f2");
+    this.button(330, 14, 76, 38, () => (this.speed = (this.speed % 3) + 1));
   }
 
   private drawBoard(): void {
@@ -862,19 +865,34 @@ class App {
 
   private drawBottomBar(): void {
     const ctx = this.ctx;
-    ctx.fillStyle = "rgba(110,70,30,0.15)";
-    ctx.fillRect(0, BAR_Y - 6, W, H - BAR_Y + 6);
+    const band = ctx.createLinearGradient(0, BAR_Y - 10, 0, H);
+    band.addColorStop(0, "rgba(110,70,30,0)");
+    band.addColorStop(0.25, "rgba(110,70,30,0.13)");
+    ctx.fillStyle = band;
+    ctx.fillRect(0, BAR_Y - 10, W, H - BAR_Y + 10);
 
     const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS && this.game.status !== "won";
+    const by = BAR_Y + 4;
+    const bh = 54;
+    const mid = by + (bh - Math.max(3, bh * 0.1)) / 2;
+    ctx.save();
     ctx.globalAlpha = canSlot ? 1 : 0.45;
-    tile(ctx, 24, BAR_Y + 6, 176, 52, "#5cc464", 6, 18);
-    label(ctx, canSlot ? "+1 Slot  (1)" : "+1 Slot  (0)", 112, BAR_Y + 29, 18, "#5cc464");
-    ctx.globalAlpha = 1;
-    if (canSlot) this.button(24, BAR_Y + 6, 176, 52, () => this.addSlot());
+    pod(ctx, 24, by, 176, bh, "#5cc464", 20);
+    numeral(ctx, "+1 Slot", 100, mid, 19, "#5cc464");
+    badge(ctx, canSlot ? "1" : "0", 168, mid, "#5cc464");
+    ctx.restore();
+    if (canSlot) this.button(24, by, 176, bh, () => this.addSlot());
 
-    tile(ctx, 220, BAR_Y + 6, 176, 52, "#8f7cf0", 6, 18);
-    label(ctx, "Your image", 308, BAR_Y + 29, 18, "#8f7cf0");
-    this.button(220, BAR_Y + 6, 176, 52, () => this.fileInput.click());
+    pod(ctx, 220, by, 176, bh, "#8f7cf0", 20);
+    // Center the icon and the words together as one group.
+    ctx.font = `800 18px "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
+    const textW = ctx.measureText("Your image").width;
+    const iconW = 20;
+    const gap = 9;
+    const left = 220 + (176 - (iconW + gap + textW)) / 2;
+    icon(ctx, "picture", left + iconW / 2, mid, 18, "#8f7cf0");
+    numeral(ctx, "Your image", left + iconW + gap + textW / 2, mid, 18, "#8f7cf0");
+    this.button(220, by, 176, bh, () => this.fileInput.click());
   }
 
   private drawOverlay(): void {
@@ -913,9 +931,14 @@ class App {
     const ph = actions.length ? 220 : 120;
     const px = (W - pw) / 2;
     const py = (H - ph) / 2 - 60;
+    ctx.save();
+    ctx.shadowColor = "rgba(40,20,5,0.35)";
+    ctx.shadowBlur = 28;
+    ctx.shadowOffsetY = 10;
     ctx.fillStyle = "#fbf4e8";
-    roundRect(ctx, px, py, pw, ph, 22);
+    roundRect(ctx, px, py, pw, ph, 24);
     ctx.fill();
+    ctx.restore();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#6b4523";
@@ -931,9 +954,9 @@ class App {
     actions.forEach((a, i) => {
       const bx = (W - total) / 2 + i * (bw + 16);
       const by = py + ph - 74;
-      tile(ctx, bx, by, bw, 52, a.color, 6, 18);
-      label(ctx, a.text, bx + bw / 2, by + 23, 19, a.color);
-      this.button(bx, by, bw, 52, a.fn);
+      pod(ctx, bx, by, bw, 54, a.color, 20);
+      numeral(ctx, a.text, bx + bw / 2, by + (54 - Math.max(3, 5.4)) / 2, 19, a.color);
+      this.button(bx, by, bw, 54, a.fn);
     });
   }
 }
