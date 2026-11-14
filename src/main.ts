@@ -59,7 +59,8 @@ const SLOT_Y = 540;
 const SLOT_H = 66;
 const TRAY_Y = 636;
 const TRAY_ROWS = 3;
-const BLOCK = { w: 80, h: 52, gx: 14, gy: 8 };
+/** Tray crates: five columns, lined up under the five slots (68 wide, 10 apart). */
+const BLOCK = { w: 68, h: 52, gx: 10, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
 
