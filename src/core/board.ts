@@ -10,9 +10,11 @@ export type Side = "top" | "right" | "bottom" | "left";
  * Transparent cells sealed inside the picture don't count until a truck can get
  * to them, so the rules always match where a truck can actually drive.
  *
- * Trucks clear the picture from the outside in: each takes the reachable cube
- * fewest cells in from an open edge, then the one with the shortest drive along
- * the road from the ramp (which sits below the middle of the bottom edge).
+ * Each truck takes the nearest reachable cube of its color: the shortest drive
+ * from the ramp (which sits below the middle of the bottom edge), counting the
+ * road plus the cleared cells it drives through inside the field. Rows don't
+ * matter: a second-row cube right above a cleared gap goes before a first-row
+ * cube further along the road.
  */
 export class Board {
   readonly width: number;
@@ -30,9 +32,9 @@ export class Board {
   /** Cubes still on the board, including claimed ones not yet picked up. */
   remaining = 0;
   readonly edges: OpenEdges;
-  /** For open cells: how many cells in from an open edge (0 = on the edge). */
+  /** For open cells, along their shortest drive from the ramp: cells driven inside the field (0 = on the edge). */
   private readonly depth: Int32Array;
-  /** For open cells: road distance (in cells) from the ramp to where that shortest way in starts. */
+  /** ...and the road distance (in cells) before that. The drive is depth + road. */
   private readonly road: Float32Array;
 
   constructor(picture: Picture, edges: OpenEdges = "all") {
@@ -131,14 +133,19 @@ export class Board {
     }
   }
 
-  /** Is (d1, r1) a shorter way in than (d2, r2)? Fewer cells in first, then less road. */
+  /**
+   * Is a way in of d1 cells inside after r1 of road shorter than (d2, r2)? The
+   * shorter total drive wins; on a tie, the one closer to the edge.
+   */
   private static better(d1: number, r1: number, d2: number, r2: number): boolean {
-    return d1 < d2 || (d1 === d2 && r1 < r2);
+    const t1 = d1 + r1;
+    const t2 = d2 + r2;
+    return t1 < t2 || (t1 === t2 && d1 < d2);
   }
 
   /**
-   * Updates the "way in" of newly opened cells, and of any open cells that now
-   * have a shorter one through them. Opening cells only ever shortens ways in,
+   * Updates the shortest drive to newly opened cells, and to any open cells that
+   * now have a shorter one through them. Opening cells only ever shortens drives,
    * so this only touches the area around the change.
    */
   private updateDepths(opened: number[]): void {
@@ -187,8 +194,8 @@ export class Board {
 
   /**
    * The next cube of `color` for a truck, or -1 if none is reachable: the one
-   * fewest cells in from an open edge, then the shortest drive from the ramp,
-   * then the lowest index, so the choice is deterministic.
+   * with the shortest drive from the ramp, then the one closer to the edge, then
+   * the lowest index, so the choice is deterministic.
    */
   pickTarget(color: ColorId): number {
     // Hot path (the level generator runs it millions of times), so no allocations.
@@ -206,43 +213,41 @@ export class Board {
       const y = (i - x) / w;
       let d = Infinity;
       let r = Infinity;
-      // On an open edge itself: zero cells in.
+      // Straight in from the road, if it is on an open edge...
       if (y === h - 1) {
         d = 0;
         r = Math.abs(x + 0.5 - mid);
       }
       if (this.edges !== "bottom" && (x === 0 || x === w - 1)) {
         const rs = mid + (h - y - 0.5);
-        if (d > 0 || rs < r) {
+        if (Board.better(0, rs, d, r)) {
           d = 0;
-          r = Math.min(r, rs);
+          r = rs;
         }
       }
       if (this.edges === "all" && y === 0) {
         const rs = mid + h + Math.min(x + 0.5, w - x - 0.5);
-        if (d > 0 || rs < r) {
+        if (Board.better(0, rs, d, r)) {
           d = 0;
-          r = Math.min(r, rs);
+          r = rs;
         }
       }
-      // Or one cell further in than its best cleared neighbor.
-      if (d > 0) {
-        if (x > 0 && open[i - 1] === 1 && Board.better(depth[i - 1] + 1, road[i - 1], d, r)) {
-          d = depth[i - 1] + 1;
-          r = road[i - 1];
-        }
-        if (x < w - 1 && open[i + 1] === 1 && Board.better(depth[i + 1] + 1, road[i + 1], d, r)) {
-          d = depth[i + 1] + 1;
-          r = road[i + 1];
-        }
-        if (y > 0 && open[i - w] === 1 && Board.better(depth[i - w] + 1, road[i - w], d, r)) {
-          d = depth[i - w] + 1;
-          r = road[i - w];
-        }
-        if (y < h - 1 && open[i + w] === 1 && Board.better(depth[i + w] + 1, road[i + w], d, r)) {
-          d = depth[i + w] + 1;
-          r = road[i + w];
-        }
+      // ...or through its best cleared neighbor, whichever is the shorter drive.
+      if (x > 0 && open[i - 1] === 1 && Board.better(depth[i - 1] + 1, road[i - 1], d, r)) {
+        d = depth[i - 1] + 1;
+        r = road[i - 1];
+      }
+      if (x < w - 1 && open[i + 1] === 1 && Board.better(depth[i + 1] + 1, road[i + 1], d, r)) {
+        d = depth[i + 1] + 1;
+        r = road[i + 1];
+      }
+      if (y > 0 && open[i - w] === 1 && Board.better(depth[i - w] + 1, road[i - w], d, r)) {
+        d = depth[i - w] + 1;
+        r = road[i - w];
+      }
+      if (y < h - 1 && open[i + w] === 1 && Board.better(depth[i + w] + 1, road[i + w], d, r)) {
+        d = depth[i + w] + 1;
+        r = road[i + w];
       }
       if (Board.better(d, r, bestDepth, bestRoad) || (d === bestDepth && r === bestRoad && i < best)) {
         bestDepth = d;
