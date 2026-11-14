@@ -5,6 +5,7 @@ import { buildLevel } from "./levels/generator";
 import { pictureFromFile } from "./levels/image";
 import {
   badge,
+  brickWall,
   car,
   cubeSprite,
   holdStripes,
@@ -27,13 +28,15 @@ const H = 900;
 const BOARD = { x: 16, y: 64, w: 388, h: 388 };
 const ROAD_W = 15;
 /** Smallest gap between the board frame and the cube field, leaving room for the road. */
-const FIELD_INSET = 27;
+const FIELD_INSET = 31;
 /**
  * The road's center line runs this far outside the cube field on every side, so
  * it hugs the picture whatever its shape (on a square picture it sits 13 px
- * inside the board frame).
+ * inside the board frame). The brick walls fill the gap on closed sides.
  */
-const ROAD_GAP = 14;
+const ROAD_GAP = 18;
+/** Thickness of the brick walls on closed sides, between the road and the field. */
+const WALL_T = 9.5;
 /** Trucks keep this far right of the route so traffic in and out doesn't overlap. */
 const LANE = 2.5;
 /** A truck stops when another is within this distance ahead of it (center to center, at scale 1). */
@@ -712,25 +715,31 @@ class App {
     const { edges, picture: p } = this.level;
     if (edges === "all") return;
     const ctx = this.ctx;
-    const x0 = BOARD.x + (BOARD.w - cs * p.width) / 2 - 4;
-    const y0 = BOARD.y + (BOARD.h - cs * p.height) / 2 - 4;
-    const x1 = x0 + cs * p.width + 8;
-    const y1 = y0 + cs * p.height + 8;
-    ctx.strokeStyle = "#c08a55";
-    ctx.lineWidth = 5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
+    // The wall fills the gap between the road and the field on each closed side.
+    const t = WALL_T;
+    const fx = BOARD.x + (BOARD.w - cs * p.width) / 2;
+    const fy = BOARD.y + (BOARD.h - cs * p.height) / 2;
+    const fw = cs * p.width;
+    const fh = cs * p.height;
+    const out = 1; // a hair outside the cubes, so it never covers them
+    // Soft shadow under the wall.
+    ctx.save();
+    ctx.shadowColor = "rgba(80,40,10,0.35)";
+    ctx.shadowBlur = 3;
+    ctx.shadowOffsetY = 1.5;
+    ctx.fillStyle = "#c2553a";
     if (edges === "bottom") {
-      ctx.moveTo(x0, y1);
-      ctx.lineTo(x0, y0);
-      ctx.lineTo(x1, y0);
-      ctx.lineTo(x1, y1);
-    } else {
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y0);
+      ctx.fillRect(fx - out - t, fy - out - t, t, fh + out + t);
+      ctx.fillRect(fx + fw + out, fy - out - t, t, fh + out + t);
     }
-    ctx.stroke();
+    ctx.fillRect(fx - out - t, fy - out - t, fw + 2 * (out + t), t);
+    ctx.restore();
+    // Then the bricks: top wall across, and side walls down to the open bottom.
+    brickWall(ctx, fx - out - t, fy - out - t, fw + 2 * (out + t), t);
+    if (edges === "bottom") {
+      brickWall(ctx, fx - out - t, fy - out, t, fh + out);
+      brickWall(ctx, fx + fw + out, fy - out, t, fh + out);
+    }
   }
 
   /** A ramp sloping down into the table, with hazard stripes along its lip. */
