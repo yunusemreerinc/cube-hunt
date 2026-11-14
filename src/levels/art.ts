@@ -137,8 +137,8 @@ function sunset(): Picture {
   return s.toPicture("Sunset", {
     P: "#7a5cc9",
     K: "#f07aa8",
-    O: "#ff9f43",
-    Y: "#ffd84a",
+    O: "#ff6d1a",
+    Y: "#ffe63d",
     S: "#2f7fd6",
     L: "#86d6f2",
   });
@@ -158,8 +158,8 @@ function cat(): Picture {
   s.rect(11, 18, 12, 18, "K");
   return s.toPicture("Cat", {
     B: "#bff0d9",
-    O: "#f7a440",
-    D: "#d97328",
+    O: "#ff8c26",
+    D: "#a83a1a",
     P: "#f58fb2",
     W: "#fff6ea",
     K: "#3a2a2a",
@@ -184,11 +184,11 @@ function planet(): Picture {
   s.paint("R", (x, y) => ring(x, y) && !(y < 15 && (x - 14) ** 2 + (y - 14) ** 2 <= 7.8 ** 2));
   return s.toPicture("Ringed Planet", {
     N: "#2b2d5c",
-    W: "#fff7c2",
-    M: "#cfd6e6",
-    A: "#f39c6b",
-    C: "#f6d28a",
-    R: "#b8a3f5",
+    W: "#ffffff",
+    M: "#97a2b8",
+    A: "#ef6a35",
+    C: "#ffd84f",
+    R: "#a874ff",
   });
 }
 
