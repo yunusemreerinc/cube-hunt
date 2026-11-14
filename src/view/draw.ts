@@ -209,10 +209,13 @@ function truckSprite(color: string, cargo: boolean, res: number): HTMLCanvasElem
 }
 
 /**
- * A glossy, rounded cube drawn onto its own canvas `px` device pixels square, so
- * the board can stamp copies instead of redrawing gradients for every cube.
- * Layers: a darker base for depth, a face that fades from light to the full
- * color, a soft gloss band, a small top-left highlight and a crisp edge.
+ * A rounded, bevelled cube drawn onto its own canvas `px` device pixels square,
+ * so the board can stamp copies instead of redrawing gradients for every cube.
+ * Lit from the top left: a deeper side shows below the face; the face fades
+ * diagonally from a light tint to a slightly deeper tone; an inner bevel is
+ * bright along the top edge and shaded along the bottom; a soft pillow of light
+ * sits in the middle, with a crisp highlight in the top-left corner; and a fine
+ * dark outline keeps light colors distinct from the board.
  */
 export function cubeSprite(color: string, px: number): HTMLCanvasElement {
   const size = Math.max(4, Math.round(px));
@@ -220,41 +223,59 @@ export function cubeSprite(color: string, px: number): HTMLCanvasElement {
   canvas.width = canvas.height = size;
   const g = canvas.getContext("2d")!;
   const s = size;
-  const r = s * 0.24;
-  const depth = Math.max(1, s * 0.11);
+  const r = s * 0.26;
+  const depth = Math.max(1, s * 0.12);
   const face = s - depth;
 
-  // Base, peeking out below the face.
-  g.fillStyle = shade(color, -0.34);
+  // Side, peeking out below the face.
+  const side = g.createLinearGradient(0, face * 0.5, 0, s);
+  side.addColorStop(0, shade(color, -0.3));
+  side.addColorStop(1, shade(color, -0.48));
+  g.fillStyle = side;
   roundRect(g, 0, depth, s, face, r);
   g.fill();
 
-  // Face: lighter at the top, a touch darker at the bottom.
-  const grad = g.createLinearGradient(0, 0, 0, face);
-  grad.addColorStop(0, shade(color, 0.24));
-  grad.addColorStop(0.55, color);
-  grad.addColorStop(1, shade(color, -0.07));
-  g.fillStyle = grad;
+  // Face: lit from the top left.
+  const lit = g.createLinearGradient(0, 0, s, face);
+  lit.addColorStop(0, shade(color, 0.3));
+  lit.addColorStop(0.5, color);
+  lit.addColorStop(1, shade(color, -0.1));
+  g.fillStyle = lit;
   roundRect(g, 0, 0, s, face, r);
   g.fill();
 
-  // Soft gloss band across the top.
-  const gloss = g.createLinearGradient(0, s * 0.06, 0, face * 0.5);
-  gloss.addColorStop(0, "rgba(255,255,255,0.42)");
-  gloss.addColorStop(1, "rgba(255,255,255,0)");
-  g.fillStyle = gloss;
-  roundRect(g, s * 0.13, s * 0.06, s * 0.74, face * 0.44, r * 0.7);
+  // Pillow of light in the middle.
+  const pillow = g.createRadialGradient(s * 0.4, face * 0.36, 0, s * 0.4, face * 0.36, s * 0.55);
+  pillow.addColorStop(0, "rgba(255,255,255,0.32)");
+  pillow.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = pillow;
+  roundRect(g, 0, 0, s, face, r);
   g.fill();
 
-  // Small highlight in the top-left corner.
-  g.fillStyle = "rgba(255,255,255,0.75)";
-  g.beginPath();
-  g.ellipse(s * 0.28, s * 0.22, s * 0.075, s * 0.045, -0.6, 0, Math.PI * 2);
-  g.fill();
+  // Inner bevel: bright along the top edge, shaded along the bottom.
+  const bw = Math.max(1, s * 0.065);
+  const bevel = g.createLinearGradient(0, 0, 0, face);
+  bevel.addColorStop(0, "rgba(255,255,255,0.65)");
+  bevel.addColorStop(0.45, "rgba(255,255,255,0)");
+  bevel.addColorStop(0.75, "rgba(0,0,0,0)");
+  bevel.addColorStop(1, "rgba(0,0,0,0.09)");
+  g.strokeStyle = bevel;
+  g.lineWidth = bw;
+  roundRect(g, bw / 2 + s * 0.02, bw / 2 + s * 0.02, s - bw - s * 0.04, face - bw - s * 0.04, r * 0.8);
+  g.stroke();
 
-  // Crisp outline so light colors stay distinct from the board.
-  g.globalAlpha = 0.35;
-  g.strokeStyle = shade(color, -0.45);
+  // Crisp highlight in the top-left corner.
+  g.fillStyle = "rgba(255,255,255,0.85)";
+  g.save();
+  g.translate(s * 0.27, face * 0.24);
+  g.rotate(-0.75);
+  roundRect(g, -s * 0.1, -s * 0.035, s * 0.2, s * 0.07, s * 0.035);
+  g.fill();
+  g.restore();
+
+  // Fine outline around the whole cube.
+  g.globalAlpha = 0.4;
+  g.strokeStyle = shade(color, -0.55);
   g.lineWidth = Math.max(1, s * 0.03);
   const inset = g.lineWidth / 2;
   roundRect(g, inset, inset, s - 2 * inset, s - 2 * inset, r);
