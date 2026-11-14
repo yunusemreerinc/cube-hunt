@@ -59,8 +59,15 @@ const MAX_SLOTS = 6;
 // multiplies driving and loading, so 2x and 3x are exactly double and triple.
 /** Truck driving speed in design px per second. */
 const CAR_SPEED = 200;
-/** Seconds a truck stops to load its cube. */
-const LOAD_TIME = 0.25;
+/** Seconds a truck stops to load its cube: the cube lifts out, arcs into the bed and lands. */
+const LOAD_TIME = 0.42;
+/** Share of LOAD_TIME the cube spends working loose and rising out of its spot. */
+const LIFT_END = 0.22;
+/** Share of LOAD_TIME at which the cube lands in the bed; the truck settles after that. */
+const LAND_AT = 0.78;
+/** Where the bed's middle is, in truck units behind the truck's center, and the cargo cube's size. */
+const BED_X = -6.2;
+const BED_CUBE = 8;
 const ROAD_COLOR = "#a3968c";
 /** Distance over which a truck shrinks and fades as it drives down the ramp. */
 const RAMP_FADE = 28;
@@ -320,7 +327,9 @@ class App {
       if (c.state === "load") {
         // Turn to face the cube while loading it.
         c.angle = turnToward(c.angle, Math.atan2(c.cube.y - c.y, c.cube.x - c.x), 10 * sdt);
+        const before = 1 - c.wait / LOAD_TIME;
         c.wait -= sdt;
+        if (before < LAND_AT && 1 - c.wait / LOAD_TIME >= LAND_AT) this.landPuff(c);
         if (c.wait <= 0) {
           // Drive back out the way it came, then down the ramp.
           c.state = "home";
@@ -432,6 +441,86 @@ class App {
     }
   }
 
+  /** Where a truck is drawn: on the road it keeps to its own lane. */
+  private carPose(c: Car): Pt {
+    const lane = LANE * this.carScale() * this.laneShare(c.x, c.y);
+    return { x: c.x - Math.sin(c.angle) * lane, y: c.y + Math.cos(c.angle) * lane };
+  }
+
+  /** Middle of a truck's open bed, where its cube ends up. */
+  private bedPoint(c: Car): Pt {
+    const { x, y } = this.carPose(c);
+    const back = BED_X * this.carScale();
+    return { x: x + Math.cos(c.angle) * back, y: y + Math.sin(c.angle) * back };
+  }
+
+  /**
+   * A cube being loaded, at `t` (0..LAND_AT) through the load: it rocks loose and
+   * rises out of its spot, then arcs up and over into the truck's bed, turning to
+   * sit square in it and shrinking to the bed's size. Its shadow stays on the
+   * ground, so the height reads clearly.
+   */
+  private drawLoading(c: Car, t: number): void {
+    const ctx = this.ctx;
+    const cs = this.cellSize();
+    const s = cs - Math.max(1, cs * 0.1);
+    const px = Math.round(s * this.scale * (window.devicePixelRatio || 1));
+    const img = this.sprite(c.color, px, () => cubeSprite(c.color, px));
+    const bed = this.bedPoint(c);
+    const bedSize = BED_CUBE * this.carScale();
+    const rise = cs * 0.3;
+    const peak = cs * 1.1;
+    let x = c.cube.x;
+    let y = c.cube.y;
+    let h: number;
+    let size = s;
+    let rot: number;
+    if (t < LIFT_END) {
+      const k = t / LIFT_END;
+      h = rise * k * k;
+      rot = Math.sin(k * Math.PI * 3) * 0.12 * (1 - k); // rocks loose
+    } else {
+      const k = (t - LIFT_END) / (LAND_AT - LIFT_END);
+      const e = k * k * (3 - 2 * k);
+      x += (bed.x - x) * e;
+      y += (bed.y - y) * e;
+      h = rise * (1 - k) + 4 * peak * k * (1 - k);
+      size = s + (bedSize - s) * e;
+      // Turn the short way round to line up with the truck.
+      const turn = Math.atan2(Math.sin(c.angle), Math.cos(c.angle));
+      const quarter = Math.round(turn / (Math.PI / 2)) * (Math.PI / 2);
+      rot = (turn - quarter) * e;
+    }
+    const lift = h / (rise + peak);
+    ctx.save();
+    ctx.fillStyle = `rgba(60,30,10,${0.28 * (1 - 0.5 * lift)})`;
+    ctx.beginPath();
+    ctx.ellipse(x + h * 0.25, y + size * 0.15, size * 0.5 * (1 - 0.3 * lift), size * 0.38 * (1 - 0.3 * lift), 0, 0, Math.PI * 2);
+    ctx.fill();
+    const drawn = size * (1 + 0.25 * lift); // closer to the eye when higher up
+    ctx.translate(x, y - h);
+    ctx.rotate(rot);
+    ctx.drawImage(img, -drawn / 2, -drawn / 2, drawn, drawn);
+    ctx.restore();
+  }
+
+  /** A little dust where the cube lands in the bed. */
+  private landPuff(c: Car): void {
+    const bed = this.bedPoint(c);
+    for (let k = 0; k < 4; k++) {
+      const a = Math.random() * Math.PI * 2;
+      this.particles.push({
+        x: bed.x,
+        y: bed.y,
+        vx: Math.cos(a) * (30 + Math.random() * 30),
+        vy: Math.sin(a) * (30 + Math.random() * 30) - 20,
+        life: 0.18 + Math.random() * 0.1,
+        color: "#efe2cc",
+        size: 2,
+      });
+    }
+  }
+
   /** The truck lifts its cube off the board, kicking up a little dust. */
   private pickUp(c: Car): void {
     this.shown[c.cell] = EMPTY;
@@ -495,10 +584,20 @@ class App {
       }
       fade = Math.min(1, fade);
       if (fade <= 0.02) continue; // still down in the tunnel
-      const lane = LANE * carScale * this.laneShare(c.x, c.y);
-      const x = c.x - Math.sin(c.angle) * lane;
-      const y = c.y + Math.cos(c.angle) * lane;
-      car(ctx, x, y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), fade);
+      const { x, y } = this.carPose(c);
+      let size = carScale * (0.55 + 0.45 * fade);
+      let cargo = c.cargo;
+      if (c.state === "load") {
+        const t = 1 - c.wait / LOAD_TIME;
+        cargo = t >= LAND_AT;
+        // The springs give a little as the cube lands, then settle.
+        if (cargo) size *= 1 - 0.07 * Math.sin(((t - LAND_AT) / (1 - LAND_AT)) * Math.PI);
+      }
+      car(ctx, x, y, c.angle, c.color, cargo, size, fade);
+    }
+    // Cubes on their way into a truck are in the air, so they go over everything.
+    for (const c of this.cars) {
+      if (c.state === "load" && 1 - c.wait / LOAD_TIME < LAND_AT) this.drawLoading(c, 1 - c.wait / LOAD_TIME);
     }
     for (const p of this.particles) {
       ctx.globalAlpha = Math.min(1, p.life * 3);
