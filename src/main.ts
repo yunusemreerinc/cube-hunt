@@ -192,7 +192,7 @@ class App {
   private startLevel(): void {
     const spec = this.specs[this.levelIndex];
     const built = this.custom
-      ? buildLevel(this.custom, { seed: 1234, shuffle: 1.5, edges: "all", targetWinRate: 0.6 })
+      ? buildLevel(this.custom, { seed: 1234, shuffle: 0.7, edges: "bottom", targetWinRate: 0.6 })
       : buildLevel(spec.picture, spec);
     this.level = built.level;
     this.winRate = built.winRate;

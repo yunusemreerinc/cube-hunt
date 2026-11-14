@@ -175,32 +175,40 @@ describe("claimed cubes", () => {
   });
 });
 
-describe("cubes touching the road first", () => {
-  it("takes a cube touching the road before a nearer one further in", () => {
-    // 9 wide, 4 tall, every side open. Clear the middle of the bottom row and dig
-    // a shaft up the middle column.
+describe("nearest cube first", () => {
+  it("takes a second-row cube above a cleared gap before a first-row cube further along the road", () => {
+    // 7 wide, 2 tall, one color, only the bottom open. Clear the middle three
+    // cubes of the bottom row.
+    const p: Picture = { name: "two-rows", width: 7, height: 2, cells: new Int16Array(14), palette: ["#000"] };
+    const b = new Board(p, "bottom");
+    for (const x of [3, 2, 4]) b.eat(7 + x);
+    // The second-row cube above the middle of the gap is 1 cell's drive away;
+    // the first-row cubes left at (1,1) and (5,1) are 2 along the road.
+    expect(b.pickTarget(0)).toBe(3);
+    b.eat(3);
+    // Now the nearest are 2 away: (2,0) through the gap, and (1,1) on the first
+    // row. On a tie the one closer to the edge goes first: the first-row cube.
+    expect(b.pickTarget(0)).toBe(7 + 1);
+  });
+
+  it("measures the real drive: road plus cells inside, not a straight line", () => {
+    // 9 wide, 4 tall. Clear the middle of the bottom row and dig a shaft up the
+    // middle column.
     const p: Picture = { name: "wide", width: 9, height: 4, cells: new Int16Array(36), palette: ["#000"] };
-    const b = new Board(p, "all");
+    const b = new Board(p, "bottom");
     for (const x of [4, 3, 5, 2, 6]) b.eat(27 + x);
     b.eat(22);
     b.eat(13);
-    // The shaft wall at (3,2) is a shorter drive, but it is a cell in from the
-    // road; the bottom-row cube at (1,3) touches the road, so it goes first.
-    expect(b.pickTarget(0)).toBe(27 + 1);
+    // The shaft wall at (3,2) is 2 cells' drive away (into the gap, one up);
+    // the first-row cube at (1,3) is 3 along the road. The wall is nearer.
+    expect(b.pickTarget(0)).toBe(21);
   });
 
-  it("can take any cube touching the road, on every side", () => {
-    // 3x3 with every side open: all eight outer cubes touch the road.
-    const p: Picture = { name: "sq", width: 3, height: 3, cells: new Int16Array(9), palette: ["#000"] };
-    const b = new Board(p, "all");
-    expect(b.reachableCells(0).sort((x, y) => x - y)).toEqual([0, 1, 2, 3, 5, 6, 7, 8]);
-  });
-
-  it("among cubes touching the road, takes the shortest drive from the ramp", () => {
+  it("among equally near cubes, takes the lower index", () => {
     const p: Picture = { name: "row", width: 7, height: 1, cells: new Int16Array(7), palette: ["#000"] };
     const b = new Board(p, "bottom");
     expect(b.pickTarget(0)).toBe(3);
     b.eat(3);
-    expect(b.pickTarget(0)).toBe(2); // 2 and 4 are both 1 along the road; the lower index wins
+    expect(b.pickTarget(0)).toBe(2); // 2 and 4 are both 1 away
   });
 });

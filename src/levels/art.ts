@@ -310,18 +310,17 @@ export interface LevelSpec extends BuildOptions {
 }
 
 export function builtInLevels(): LevelSpec[] {
-  // Every side is open: trucks can pick up any cube that touches the road.
   return [
-    { picture: strawberry(), edges: "all", shuffle: 0.3, targetWinRate: 1, seed: 11 },
-    { picture: mushroom(), edges: "all", shuffle: 1.5, targetWinRate: 0.85, seed: 24 },
-    { picture: sunset(), edges: "all", slots: 4, shuffle: 2, targetWinRate: 0.6, seed: 42 },
-    { picture: planet(), edges: "all", shuffle: 0.7, targetWinRate: 0.48, seed: 68 },
-    { picture: cat(), edges: "all", shuffle: 1, targetWinRate: 0.4, seed: 41 },
+    { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
+    { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 23 },
+    { picture: sunset(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.6, seed: 40 },
+    { picture: planet(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.48, seed: 66 },
+    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 41 },
     // A second run of levels, again from easier to harder.
-    { picture: cactus(), edges: "all", shuffle: 1, targetWinRate: 0.8, seed: 77 },
-    { picture: rocket(), edges: "all", shuffle: 2, targetWinRate: 0.74, seed: 104 },
-    { picture: duck(), edges: "all", shuffle: 1.5, targetWinRate: 0.7, seed: 67 },
-    { picture: iceCream(), edges: "all", shuffle: 1, targetWinRate: 0.5, seed: 83 },
-    { picture: watermelon(), edges: "all", shuffle: 2, targetWinRate: 0.35, seed: 101 },
+    { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 75 },
+    { picture: rocket(), edges: "bottom", shuffle: 2, targetWinRate: 0.74, seed: 103 },
+    { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 67 },
+    { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 83 },
+    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 101 },
   ];
 }

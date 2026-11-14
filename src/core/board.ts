@@ -10,10 +10,11 @@ export type Side = "top" | "right" | "bottom" | "left";
  * Transparent cells sealed inside the picture don't count until a truck can get
  * to them, so the rules always match where a truck can actually drive.
  *
- * Cubes touching the road go first: each truck takes the reachable cube of its
- * color that is fewest cells in from an open edge, then the one with the
- * shortest drive along the road from the ramp (which sits below the middle of
- * the bottom edge).
+ * Each truck takes the nearest reachable cube of its color: the shortest drive
+ * from the ramp (which sits below the middle of the bottom edge), counting the
+ * road plus the cleared cells it drives through inside the field. Rows don't
+ * matter: a second-row cube right above a cleared gap goes before a first-row
+ * cube further along the road.
  */
 export class Board {
   readonly width: number;
@@ -133,11 +134,13 @@ export class Board {
   }
 
   /**
-   * Is a way in of d1 cells inside after r1 of road better than (d2, r2)? Fewer
-   * cells in from the road wins; on a tie, the shorter road.
+   * Is a way in of d1 cells inside after r1 of road shorter than (d2, r2)? The
+   * shorter total drive wins; on a tie, the one closer to the edge.
    */
   private static better(d1: number, r1: number, d2: number, r2: number): boolean {
-    return d1 < d2 || (d1 === d2 && r1 < r2);
+    const t1 = d1 + r1;
+    const t2 = d2 + r2;
+    return t1 < t2 || (t1 === t2 && d1 < d2);
   }
 
   /**
@@ -191,7 +194,7 @@ export class Board {
 
   /**
    * The next cube of `color` for a truck, or -1 if none is reachable: the one
-   * fewest cells in from the road, then the shortest drive from the ramp, then
+   * with the shortest drive from the ramp, then the one closer to the edge, then
    * the lowest index, so the choice is deterministic.
    */
   pickTarget(color: ColorId): number {
