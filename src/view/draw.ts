@@ -443,6 +443,85 @@ export function countLabel(
   ctx.restore();
 }
 
+/** A round slate toolbar button with a soft shadow, a light rim and a glassy highlight. */
+export function roundButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  ctx.save();
+  ctx.shadowColor = "rgba(60,35,15,0.32)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  const body = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+  body.addColorStop(0, "#737a88");
+  body.addColorStop(1, "#4a505b");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  const shine = ctx.createLinearGradient(0, cy - r, 0, cy);
+  shine.addColorStop(0, "rgba(255,255,255,0.28)");
+  shine.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = shine;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - r * 0.42, r * 0.72, r * 0.48, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+/**
+ * A slate segmented switch: the options side by side, the chosen one on a glossy
+ * pill in `accent`. Returns each segment's box so the caller can make them tappable.
+ */
+export function segmented(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  labels: string[],
+  active: number,
+  accent: string,
+): { x: number; y: number; w: number; h: number }[] {
+  ctx.save();
+  ctx.shadowColor = "rgba(60,35,15,0.32)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 3;
+  const body = ctx.createLinearGradient(0, y, 0, y + h);
+  body.addColorStop(0, "#5a606c");
+  body.addColorStop(1, "#444a55");
+  ctx.fillStyle = body;
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x + 0.5, y + 0.5, w - 1, h - 1, h / 2 - 0.5);
+  ctx.stroke();
+  const pad = 3;
+  const segW = (w - pad * 2) / labels.length;
+  const boxes = labels.map((_, i) => ({ x: x + pad + i * segW, y, w: segW, h }));
+  const a = boxes[active];
+  pod(ctx, a.x, y + pad, a.w, h - pad * 2, accent, (h - pad * 2) / 2);
+  labels.forEach((label, i) => {
+    const cy = y + pad + (h - pad * 2 - Math.max(3, (h - pad * 2) * 0.1)) / 2;
+    if (i === active) {
+      countLabel(ctx, label, boxes[i].x + segW / 2, cy, 14, accent, true);
+    } else {
+      ctx.save();
+      labelFont(ctx, 13);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.fillText(label, boxes[i].x + segW / 2, cy);
+      ctx.restore();
+    }
+  });
+  return boxes;
+}
+
 /** A slate dock that holds the slots, with a soft shadow and a highlight along its top edge. */
 export function dock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 20): void {
   ctx.save();
@@ -529,7 +608,7 @@ export function holdStripes(
   ctx.restore();
 }
 
-export type IconKind = "restart" | "prev" | "next" | "fast" | "picture";
+export type IconKind = "restart" | "prev" | "next" | "picture";
 
 /**
  * A white line icon centered on (cx, cy), drawn as shapes rather than font
@@ -579,18 +658,6 @@ export function icon(
       ctx.lineTo(cx - d * s * 0.35, cy);
       ctx.lineTo(cx + d * s * 0.35, cy + s * 0.7);
       ctx.stroke();
-      break;
-    }
-    case "fast": {
-      // Two play triangles side by side.
-      for (const ox of [-s * 0.55, s * 0.35]) {
-        ctx.beginPath();
-        ctx.moveTo(cx + ox - s * 0.45, cy - s * 0.62);
-        ctx.lineTo(cx + ox + s * 0.5, cy);
-        ctx.lineTo(cx + ox - s * 0.45, cy + s * 0.62);
-        ctx.closePath();
-        ctx.fill();
-      }
       break;
     }
     case "picture": {

@@ -18,7 +18,9 @@ import {
   luminance,
   pill,
   pod,
+  roundButton,
   roundRect,
+  segmented,
   shade,
   socketSprite,
   well,
@@ -669,15 +671,15 @@ class App {
 
   private drawTopBar(): void {
     const ctx = this.ctx;
-    const round = (x: number, y: number, r: number, color: string, kind: IconKind, fn: () => void) => {
-      const h = r * 2 + 4;
-      pod(ctx, x - r, y - r, r * 2, h, color, r);
-      icon(ctx, kind, x, y - r + (h - Math.max(3, h * 0.1)) / 2, r * 0.95, color);
-      this.button(x - r, y - r, r * 2, h, fn);
+    // Round slate buttons with white icons; the colorful buttons live at the bottom.
+    const round = (x: number, y: number, r: number, kind: IconKind, fn: () => void) => {
+      roundButton(ctx, x, y, r);
+      icon(ctx, kind, x, y, r * 0.95, "#4a505b");
+      this.button(x - r, y - r, r * 2, r * 2, fn);
     };
-    round(30, 32, 18, "#8f7cf0", "restart", () => this.startLevel());
-    round(70, 32, 15, "#f0a35c", "prev", () => this.goToLevel(this.levelIndex - 1));
-    round(300, 32, 15, "#f0a35c", "next", () => this.goToLevel(this.levelIndex + 1));
+    round(30, 32, 17, "restart", () => this.startLevel());
+    round(70, 32, 15, "prev", () => this.goToLevel(this.levelIndex - 1));
+    round(300, 32, 15, "next", () => this.goToLevel(this.levelIndex + 1));
 
     const title = this.custom
       ? this.level.picture.name
@@ -691,11 +693,9 @@ class App {
     pod(ctx, 185 - chipW / 2, 38, chipW, 17, tone, 8.5);
     countLabel(ctx, difficulty, 185, 45.5, 11, tone, true);
 
-    // Speed toggle
-    pod(ctx, 330, 14, 76, 38, "#3fb6f2", 16);
-    icon(ctx, "fast", 353, 31, 18, "#3fb6f2");
-    countLabel(ctx, `${this.speed}x`, 384, 31, 17, "#3fb6f2");
-    this.button(330, 14, 76, 38, () => (this.speed = (this.speed % 3) + 1));
+    // Speed: a segmented switch; tap a speed to pick it.
+    const speeds = segmented(ctx, 324, 15, 86, 34, ["1x", "2x", "3x"], this.speed - 1, "#3fb6f2");
+    speeds.forEach((box, k) => this.button(box.x, box.y, box.w, box.h, () => (this.speed = k + 1)));
   }
 
   private drawBoard(): void {
