@@ -24,9 +24,17 @@ export function roundRect(
   ctx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2));
 }
 
+/** Truck images, drawn once per color, cargo and resolution, then stamped rotated. */
+const truckSprites = new Map<string, HTMLCanvasElement>();
+/** The truck image's size in truck units (it is 21 long and 11 wide, wheels a little wider). */
+const TRUCK_W = 24;
+const TRUCK_H = 15;
+
 /**
  * A tiny top-down pickup truck facing `angle` (front points along +x), painted in
- * `color`. With `cargo` set it carries one cube of that color on its bed.
+ * `color`, at scale `s`. With `cargo` set it carries one cube of that color on its
+ * bed. The truck itself comes from a cached image; only its shadow is drawn live,
+ * so it always falls down and to the right whichever way the truck faces.
  */
 export function car(
   ctx: CanvasRenderingContext2D,
@@ -38,85 +46,166 @@ export function car(
   s = 1,
   alpha = 1,
 ): void {
-  const dark = shade(color, -0.55);
   ctx.save();
   ctx.globalAlpha *= alpha;
 
-  // Soft shadow on the table, always cast down and to the right.
+  // Soft shadow on the table.
   ctx.save();
   ctx.translate(x + 1.5 * s, y + 2.5 * s);
   ctx.rotate(angle);
-  ctx.fillStyle = "rgba(60,30,10,0.22)";
+  ctx.fillStyle = "rgba(60,30,10,0.24)";
   ctx.beginPath();
   ctx.ellipse(0, 0, 11.5 * s, 6.5 * s, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 
+  // Draw the image at (at least) the canvas's real pixel density so it stays sharp.
+  const m = ctx.getTransform();
+  const res = Math.max(2, Math.ceil(Math.hypot(m.a, m.b) * Math.max(1, s) * 2) / 2);
+  const key = `${color}|${cargo ? 1 : 0}|${res}`;
+  let img = truckSprites.get(key);
+  if (!img) {
+    img = truckSprite(color, cargo, res);
+    truckSprites.set(key, img);
+  }
   ctx.translate(x, y);
   ctx.rotate(angle);
-  ctx.scale(s, s);
+  ctx.drawImage(img, (-TRUCK_W / 2) * s, (-TRUCK_H / 2) * s, TRUCK_W * s, TRUCK_H * s);
+  ctx.restore();
+}
 
-  // Wheels stick out a little past the body.
-  ctx.fillStyle = "#2b2420";
-  for (const wx of [-6.5, 5.5]) {
-    for (const wy of [-5.9, 5.9]) {
-      roundRect(ctx, wx - 2.6, wy - 1.4, 5.2, 2.8, 1.2);
-      ctx.fill();
+/**
+ * Paints one truck, `res` pixels per truck unit, facing right: chunky tires, a
+ * body shaded across its width so it reads as rounded, a hood with a glossy
+ * crease and headlights, a tinted glass cab with a reflection, side mirrors, and
+ * an open bed with ribs, a rim and taillights, holding a glossy cube when loaded.
+ */
+function truckSprite(color: string, cargo: boolean, res: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(TRUCK_W * res);
+  canvas.height = Math.ceil(TRUCK_H * res);
+  const g = canvas.getContext("2d")!;
+  g.scale(res, res);
+  g.translate(TRUCK_W / 2, TRUCK_H / 2);
+  const deep = shade(color, -0.5);
+
+  // Tires, with a lighter tread line.
+  for (const wx of [-6.6, 5.6]) {
+    for (const wy of [-5.75, 5.75]) {
+      g.fillStyle = "#1e1916";
+      roundRect(g, wx - 2.7, wy - 1.5, 5.4, 3, 1.3);
+      g.fill();
+      g.fillStyle = "rgba(255,255,255,0.14)";
+      roundRect(g, wx - 2, wy - 0.35, 4, 0.7, 0.35);
+      g.fill();
     }
   }
 
-  // Body.
-  ctx.fillStyle = color;
-  ctx.strokeStyle = dark;
-  ctx.lineWidth = 1;
-  roundRect(ctx, -10.5, -5.5, 21, 11, 3);
-  ctx.fill();
-  ctx.stroke();
+  // Body: a darker rim all round, then the painted top, lighter down the middle.
+  g.fillStyle = deep;
+  roundRect(g, -10.7, -5.7, 21.4, 11.4, 3.4);
+  g.fill();
+  // A faint light edge, so dark trucks still stand out against dark cubes.
+  g.strokeStyle = "rgba(255,255,255,0.4)";
+  g.lineWidth = 0.5;
+  roundRect(g, -10.95, -5.95, 21.9, 11.9, 3.6);
+  g.stroke();
+  const paint = g.createLinearGradient(0, -5.2, 0, 5.2);
+  paint.addColorStop(0, shade(color, -0.12));
+  paint.addColorStop(0.3, shade(color, 0.18));
+  paint.addColorStop(0.55, color);
+  paint.addColorStop(1, shade(color, -0.22));
+  g.fillStyle = paint;
+  roundRect(g, -10.2, -5.2, 20.4, 10.4, 3);
+  g.fill();
 
-  // Hood, a touch lighter, and headlights.
-  ctx.fillStyle = shade(color, 0.18);
-  roundRect(ctx, 4.5, -4.3, 5.4, 8.6, 2);
-  ctx.fill();
-  ctx.fillStyle = "#fff3b0";
-  ctx.beginPath();
-  ctx.arc(10, -3.4, 1, 0, Math.PI * 2);
-  ctx.arc(10, 3.4, 1, 0, Math.PI * 2);
-  ctx.fill();
+  // Hood: a glossy crease down the middle, a dark grille and two headlights.
+  g.strokeStyle = "rgba(255,255,255,0.45)";
+  g.lineWidth = 0.6;
+  g.lineCap = "round";
+  g.beginPath();
+  g.moveTo(4.8, -1.4);
+  g.lineTo(9.2, -1.2);
+  g.stroke();
+  g.fillStyle = deep;
+  roundRect(g, 9.75, -2, 0.6, 4, 0.3);
+  g.fill();
+  g.fillStyle = "#fff7c8";
+  for (const hy of [-3.9, 2.5]) {
+    roundRect(g, 9.1, hy, 1.2, 1.4, 0.5);
+    g.fill();
+  }
 
-  // Cab: windshield and roof.
-  ctx.fillStyle = "#d5eef8";
-  roundRect(ctx, 2.2, -4.1, 2.4, 8.2, 1);
-  ctx.fill();
-  ctx.fillStyle = shade(color, -0.12);
-  roundRect(ctx, -1.8, -4.3, 4, 8.6, 1.5);
-  ctx.fill();
+  // Cab: tinted windshield with a reflection, the roof, and a strip of rear window.
+  const glass = g.createLinearGradient(1.6, 0, 4.4, 0);
+  glass.addColorStop(0, "#22303f");
+  glass.addColorStop(1, "#46647e");
+  g.fillStyle = glass;
+  g.beginPath();
+  g.moveTo(1.5, -4.4);
+  g.lineTo(4.3, -3.8);
+  g.quadraticCurveTo(4.7, 0, 4.3, 3.8);
+  g.lineTo(1.5, 4.4);
+  g.closePath();
+  g.fill();
+  g.fillStyle = "rgba(255,255,255,0.4)";
+  g.beginPath();
+  g.moveTo(2.3, -4.1);
+  g.lineTo(3.2, -3.9);
+  g.lineTo(2.6, -0.6);
+  g.lineTo(1.9, -0.8);
+  g.closePath();
+  g.fill();
+  const roof = g.createLinearGradient(0, -4.3, 0, 4.3);
+  roof.addColorStop(0, shade(color, 0.05));
+  roof.addColorStop(0.35, shade(color, 0.3));
+  roof.addColorStop(1, shade(color, -0.1));
+  g.fillStyle = roof;
+  roundRect(g, -2.2, -4.3, 3.9, 8.6, 1.5);
+  g.fill();
+  g.fillStyle = "#2a3644";
+  roundRect(g, -2.75, -3.8, 0.7, 7.6, 0.35);
+  g.fill();
+  // Side mirrors.
+  g.fillStyle = shade(color, -0.25);
+  for (const my of [-1, 1]) {
+    g.beginPath();
+    g.ellipse(2.6, my * 5.75, 0.75, 0.55, 0, 0, Math.PI * 2);
+    g.fill();
+  }
 
-  // Open bed at the back.
-  ctx.fillStyle = shade(color, -0.4);
-  roundRect(ctx, -9.6, -4.4, 7, 8.8, 1.5);
-  ctx.fill();
+  // Open bed: a recessed floor with ribs, a bright rim and red taillights.
+  g.fillStyle = shade(color, -0.55);
+  roundRect(g, -9.8, -4.3, 6.8, 8.6, 1.3);
+  g.fill();
+  g.strokeStyle = "rgba(0,0,0,0.22)";
+  g.lineWidth = 0.45;
+  for (const ry of [-2.2, 0, 2.2]) {
+    g.beginPath();
+    g.moveTo(-9.2, ry);
+    g.lineTo(-3.6, ry);
+    g.stroke();
+  }
+  g.strokeStyle = shade(color, 0.22);
+  g.lineWidth = 0.55;
+  roundRect(g, -9.8, -4.3, 6.8, 8.6, 1.3);
+  g.stroke();
+  g.fillStyle = "#ff4d4d";
+  for (const ty of [-4.6, 3.2]) {
+    roundRect(g, -10.45, ty, 0.8, 1.4, 0.35);
+    g.fill();
+  }
 
   if (cargo) {
-    // The same glossy, rounded cube as on the board, with a shine that radiates from
-    // the middle so it looks right whichever way the truck faces.
-    const c = 8;
-    const cx = -6.2 - c / 2;
-    const cy = -c / 2;
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    roundRect(ctx, cx + 0.8, cy + 0.9, c, c, 2.2);
-    ctx.fill();
-    const glow = ctx.createRadialGradient(cx + c / 2, cy + c / 2, 0, cx + c / 2, cy + c / 2, c * 0.72);
-    glow.addColorStop(0, shade(color, 0.32));
-    glow.addColorStop(0.6, color);
-    glow.addColorStop(1, shade(color, -0.18));
-    ctx.fillStyle = glow;
-    roundRect(ctx, cx, cy, c, c, 2.2);
-    ctx.fill();
-    ctx.strokeStyle = dark;
-    ctx.lineWidth = 0.7;
-    ctx.stroke();
+    // The same glossy cube as on the board, sitting square in the bed.
+    const c = 7;
+    const px = Math.max(4, Math.round(c * res));
+    g.fillStyle = "rgba(0,0,0,0.28)";
+    roundRect(g, -6.3 - c / 2 + 0.5, -c / 2 + 0.6, c, c, 1.8);
+    g.fill();
+    g.drawImage(cubeSprite(color, px), -6.3 - c / 2, -c / 2, c, c);
   }
-  ctx.restore();
+  return canvas;
 }
 
 /**
