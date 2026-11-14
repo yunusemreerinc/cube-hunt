@@ -516,6 +516,24 @@ export function chip(ctx: CanvasRenderingContext2D, text: string, cx: number, cy
   countLabel(ctx, text, cx, cy - 0.6, 10, tone, true);
 }
 
+/** A frosted circle that holds a button's icon: a light inset with a fine bright rim. */
+export function iconChip(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  ctx.save();
+  const fill = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+  fill.addColorStop(0, "rgba(255,255,255,0.34)");
+  fill.addColorStop(1, "rgba(255,255,255,0.14)");
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** A slate dock that holds the slots, with a soft shadow and a highlight along its top edge. */
 export function dock(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r = 20): void {
   ctx.save();
@@ -648,7 +666,7 @@ export function speedArrows(ctx: CanvasRenderingContext2D, n: number, left: numb
   ctx.restore();
 }
 
-export type IconKind = "restart" | "prev" | "next" | "picture";
+export type IconKind = "restart" | "prev" | "next" | "picture" | "slot";
 
 /**
  * A white line icon centered on (cx, cy), drawn as shapes rather than font
@@ -697,6 +715,21 @@ export function icon(
       ctx.moveTo(cx + d * s * 0.35, cy - s * 0.7);
       ctx.lineTo(cx - d * s * 0.35, cy);
       ctx.lineTo(cx + d * s * 0.35, cy + s * 0.7);
+      ctx.stroke();
+      break;
+    }
+    case "slot": {
+      // A slot bay with a small plus in it: one more slot.
+      ctx.lineWidth = Math.max(1.6, size * 0.11);
+      roundRect(ctx, cx - s * 0.85, cy - s * 0.85, s * 1.7, s * 1.7, s * 0.42);
+      ctx.stroke();
+      const a = s * 0.4;
+      ctx.lineWidth = Math.max(2, size * 0.14);
+      ctx.beginPath();
+      ctx.moveTo(cx - a, cy);
+      ctx.lineTo(cx + a, cy);
+      ctx.moveTo(cx, cy - a);
+      ctx.lineTo(cx, cy + a);
       ctx.stroke();
       break;
     }
