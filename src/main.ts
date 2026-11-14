@@ -855,9 +855,11 @@ class App {
       }
       if (!b) return;
       const color = this.level.picture.palette[b.color];
-      const waiting = !this.game.slotCanEat(i);
-      // A blocked crate keeps its full color so you can still tell what it is;
-      // stripes, a quieter number and a badge say it is waiting.
+      // Blocked only if nothing of its color can be reached now or will be once
+      // the trucks already out collect their cubes. A blocked crate keeps its
+      // full color so you can still tell what it is; stripes, a quieter number
+      // and a badge say it is waiting.
+      const waiting = this.game.slotBlocked(i);
       pod(ctx, x, r.y, r.w, r.h, color);
       if (waiting) holdStripes(ctx, x, r.y, r.w, r.h, color);
       ctx.save();
