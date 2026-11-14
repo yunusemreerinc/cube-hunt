@@ -224,6 +224,17 @@ describe("cubes next to the road first", () => {
     expect(claims).toEqual([17, 11, 13, 5]);
   });
 
+  it("lets the view hold a slot back to space out its trucks", () => {
+    const p: Picture = { name: "row", width: 3, height: 1, cells: new Int16Array(3), palette: ["#000"] };
+    const level: Level = { picture: p, columns: [[{ id: 0, color: 0, count: 3 }]], slotCount: 1, edges: "bottom" };
+    const g = new Game(level);
+    g.tap(0);
+    expect(g.tick(() => false)).toEqual([]);
+    expect(g.slots[0]?.count).toBe(3);
+    expect(g.tick((s) => s === 0).map((d) => d.cell)).toEqual([1]);
+    expect(g.slots[0]?.count).toBe(2);
+  });
+
   it("takes a row from the middle out, and never makes trucks wait", () => {
     // 5 wide, 2 tall, only the bottom open; one crate of 10 trucks.
     const p: Picture = { name: "rows", width: 5, height: 2, cells: new Int16Array(10), palette: ["#000"] };

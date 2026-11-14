@@ -58,8 +58,9 @@ Rubber Duck, Ice Cream and Watermelon.
   wall may be in the way), then the one with the shortest drive from the ramp.
   On a level open on every side, cubes on the far left and right edges wait for
   the rows below them. A crate sends a truck to
-  every reachable cube at once: with 15 reachable cubes, 15 trucks go straight
-  away; any more go the moment a pickup opens up a new cube. On most levels trucks can
+  every reachable cube, one after another (about 7 a second at 1x) so you can
+  watch its number count down: with 15 reachable cubes, 15 trucks go in a row;
+  any more go as soon as a pickup opens up a new cube. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road
   and the field show which sides are closed.
 - A crate whose color has nothing reachable is marked **blocked**. If every slot
