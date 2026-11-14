@@ -53,10 +53,11 @@ Rubber Duck, Ice Cream and Watermelon.
   of the field, or cleared space that connects to one. A cube only counts as
   cleared once its truck has actually picked it up, so crates never send trucks
   to cubes that are still walled in.
-- Cubes next to the road go first, from the middle out: each truck takes the
-  reachable cube of its color that is fewest cells in from the road (with no
-  brick wall in the way), then the one with the shortest drive from the ramp, so
-  a row is taken from the middle out to both sides. A crate sends a truck to
+- Cubes are taken row by row from the ramp side, each row from the middle out:
+  each truck takes the reachable cube of its color in the lowest row (no brick
+  wall may be in the way), then the one with the shortest drive from the ramp.
+  On a level open on every side, cubes on the far left and right edges wait for
+  the rows below them. A crate sends a truck to
   every reachable cube at once: with 15 reachable cubes, 15 trucks go straight
   away; any more go the moment a pickup opens up a new cube. On most levels trucks can
   only turn in from the bottom (the side with the ramp). The walls between the road

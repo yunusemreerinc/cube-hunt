@@ -313,7 +313,7 @@ export function builtInLevels(): LevelSpec[] {
   return [
     { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
     { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 23 },
-    { picture: sunset(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.6, seed: 40 },
+    { picture: sunset(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.6, seed: 49 },
     { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 65 },
     { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 41 },
     // A second run of levels, again from easier to harder.
