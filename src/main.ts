@@ -3,13 +3,14 @@ import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel } from "./levels/generator";
 import { pictureFromFile } from "./levels/image";
-import { ant, label, roundRect, shade, tile } from "./view/draw";
+import { car, label, roundRect, shade, tile } from "./view/draw";
 
 // ---- Layout (design units; the canvas is scaled to fit the window) ----
 const W = 420;
 const H = 900;
 const BOARD = { x: 16, y: 64, w: 388, h: 388 };
-const HOLE = { x: W / 2, y: 496, rx: 42, ry: 18 };
+/** Tunnel ramp the trucks drive back into with their cargo. */
+const TUNNEL = { x: W / 2, y: 496, w: 112, h: 36 };
 const SLOT_Y = 540;
 const SLOT_H = 66;
 const TRAY_Y = 636;
@@ -18,18 +19,28 @@ const BLOCK = { w: 80, h: 52, gx: 14, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
 
-/** Milliseconds between ant dispatches at 1x speed. */
+/** Milliseconds between truck dispatches at 1x speed. */
 const TICK_MS = 110;
-const ANT_SPEED = 430; // design px per second at 1x
+const CAR_SPEED = 440; // design px per second at 1x
+/** Seconds a truck stops to load its cube, at 1x. */
+const LOAD_TIME = 0.12;
+/** Distance over which a truck shrinks and fades as it drives down the ramp. */
+const RAMP_FADE = 28;
 
-interface Ant {
+interface Car {
   x: number;
   y: number;
+  /** Where it came up out of the ramp; it grows to full size as it drives away from here. */
+  sx: number;
+  sy: number;
   tx: number;
   ty: number;
   color: string;
   cell: number;
-  back: boolean;
+  /** out: driving to its cube; load: stopped, loading; home: driving to the tunnel. */
+  state: "out" | "load" | "home" | "gone";
+  cargo: boolean;
+  wait: number;
   angle: number;
 }
 interface Particle {
@@ -69,9 +80,9 @@ class App {
   /** Random-player win rate of the current level, used as a difficulty label. */
   private winRate = 1;
   private game!: Game;
-  /** Cells as currently drawn; they disappear when an ant arrives, not when it is sent. */
+  /** Cells as currently drawn; a cube leaves when its truck picks it up, not when the truck is sent. */
   private shown!: Int16Array;
-  private ants: Ant[] = [];
+  private cars: Car[] = [];
   private particles: Particle[] = [];
   private flyers: Flyer[] = [];
   private buttons: Button[] = [];
@@ -90,6 +101,10 @@ class App {
     this.fileInput = document.getElementById("file") as HTMLInputElement;
     this.fileInput.addEventListener("change", () => this.onFile());
     window.addEventListener("resize", () => this.resize());
+    // Also follow the container, which can change size without the window doing so.
+    if (this.canvas.parentElement && "ResizeObserver" in window) {
+      new ResizeObserver(() => this.resize()).observe(this.canvas.parentElement);
+    }
     this.canvas.addEventListener("pointerdown", (e) => this.onPointer(e));
     const param = Number(new URLSearchParams(location.search).get("level"));
     if (param >= 1 && param <= this.specs.length) this.levelIndex = param - 1;
@@ -117,7 +132,7 @@ class App {
     this.winRate = built.winRate;
     this.game = new Game(this.level);
     this.shown = Int16Array.from(this.level.picture.cells);
-    this.ants = [];
+    this.cars = [];
     this.particles = [];
     this.flyers = [];
     this.tickAcc = 0;
@@ -234,16 +249,24 @@ class App {
       while (this.tickAcc >= TICK_MS) {
         this.tickAcc -= TICK_MS;
         for (const d of this.game.tick()) {
+          // Trucks come up out of the ramp, on the side nearest their slot.
           const r = this.slotRect(d.slot);
           const [tx, ty] = this.cellCenter(d.cell);
-          this.ants.push({
-            x: r.x + r.w / 2 + (Math.random() - 0.5) * 16,
-            y: r.y + 6,
+          const half = TUNNEL.w / 2 - 16;
+          const sx = TUNNEL.x + Math.max(-half, Math.min(half, r.x + r.w / 2 - TUNNEL.x)) + (Math.random() - 0.5) * 8;
+          const sy = TUNNEL.y + TUNNEL.h * 0.2;
+          this.cars.push({
+            x: sx,
+            y: sy,
+            sx,
+            sy,
             tx,
             ty,
             color: this.level.picture.palette[d.color],
             cell: d.cell,
-            back: false,
+            state: "out",
+            cargo: false,
+            wait: 0,
             angle: -Math.PI / 2,
           });
         }
@@ -252,29 +275,38 @@ class App {
       this.tickAcc = 0;
     }
 
-    const step = ANT_SPEED * sdt;
-    for (const a of this.ants) {
-      const dx = a.tx - a.x;
-      const dy = a.ty - a.y;
+    const step = CAR_SPEED * sdt;
+    for (const c of this.cars) {
+      if (c.state === "load") {
+        c.wait -= sdt;
+        if (c.wait <= 0) {
+          c.state = "home";
+          c.tx = TUNNEL.x + (Math.random() - 0.5) * TUNNEL.w * 0.5;
+          c.ty = TUNNEL.y + TUNNEL.h * 0.15;
+        }
+        continue;
+      }
+      const dx = c.tx - c.x;
+      const dy = c.ty - c.y;
       const d = Math.hypot(dx, dy);
-      if (d > 0.01) a.angle = Math.atan2(dy, dx);
+      // Steer smoothly instead of snapping to the new heading.
+      if (d > 0.5) c.angle = turnToward(c.angle, Math.atan2(dy, dx), 16 * sdt);
       if (d <= step) {
-        a.x = a.tx;
-        a.y = a.ty;
-        if (!a.back) {
-          this.eatVisual(a);
-          a.back = true;
-          a.tx = HOLE.x + (Math.random() - 0.5) * HOLE.rx;
-          a.ty = HOLE.y + (Math.random() - 0.5) * HOLE.ry * 0.6;
+        c.x = c.tx;
+        c.y = c.ty;
+        if (c.state === "out") {
+          this.pickUp(c);
+          c.state = "load";
+          c.wait = LOAD_TIME;
         } else {
-          a.cell = -2; // arrived home; removed below
+          c.state = "gone";
         }
       } else {
-        a.x += (dx / d) * step;
-        a.y += (dy / d) * step;
+        c.x += (dx / d) * step;
+        c.y += (dy / d) * step;
       }
     }
-    this.ants = this.ants.filter((a) => a.cell !== -2);
+    this.cars = this.cars.filter((c) => c.state !== "gone");
 
     for (const p of this.particles) {
       p.x += p.vx * dt;
@@ -287,21 +319,23 @@ class App {
     for (const f of this.flyers) f.t += dt * 5.5;
     this.flyers = this.flyers.filter((f) => f.t < 1);
 
-    if (this.game.status !== "playing" && this.ants.length === 0) this.overlayDelay += dt;
+    if (this.game.status !== "playing" && this.cars.length === 0) this.overlayDelay += dt;
   }
 
-  private eatVisual(a: Ant): void {
-    this.shown[a.cell] = EMPTY;
+  /** The truck lifts its cube off the board, kicking up a little dust. */
+  private pickUp(c: Car): void {
+    this.shown[c.cell] = EMPTY;
+    c.cargo = true;
     const cs = this.cellSize();
-    for (let k = 0; k < 4; k++) {
+    for (let k = 0; k < 3; k++) {
       this.particles.push({
-        x: a.tx,
-        y: a.ty,
-        vx: (Math.random() - 0.5) * 160,
-        vy: -60 - Math.random() * 120,
-        life: 0.35 + Math.random() * 0.2,
-        color: a.color,
-        size: Math.max(2, cs * 0.35),
+        x: c.tx + (Math.random() - 0.5) * cs,
+        y: c.ty + (Math.random() - 0.5) * cs,
+        vx: (Math.random() - 0.5) * 70,
+        vy: -30 - Math.random() * 40,
+        life: 0.25 + Math.random() * 0.15,
+        color: "#e8d6b8",
+        size: Math.max(2, cs * 0.25),
       });
     }
   }
@@ -310,7 +344,12 @@ class App {
 
   private resize(): void {
     const dpr = window.devicePixelRatio || 1;
-    this.scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+    // Fit the container's content box (the whole page in index.html), keeping the aspect ratio.
+    const host = this.canvas.parentElement ?? document.body;
+    const style = getComputedStyle(host);
+    const availW = host.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const availH = host.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    this.scale = Math.max(0.1, Math.min(availW / W, availH / H));
     this.canvas.style.width = `${W * this.scale}px`;
     this.canvas.style.height = `${H * this.scale}px`;
     this.canvas.width = Math.round(W * this.scale * dpr);
@@ -328,13 +367,16 @@ class App {
     this.drawBackground();
     this.drawTopBar();
     this.drawBoard();
-    this.drawHole();
+    this.drawTunnel();
     this.drawSlots();
     this.drawTray();
     this.drawBottomBar();
-    for (const a of this.ants) {
-      const s = a.back ? 0.9 : 1;
-      ant(ctx, a.x, a.y, a.angle, a.color, this.time, s);
+    const carScale = Math.min(1.15, Math.max(0.85, this.cellSize() / 17));
+    for (const c of this.cars) {
+      // Trucks grow as they climb out of the ramp, and shrink as they roll back down it.
+      const fromRamp = c.state === "home" ? Math.hypot(c.tx - c.x, c.ty - c.y) : Math.hypot(c.x - c.sx, c.y - c.sy);
+      const fade = Math.min(1, fromRamp / RAMP_FADE);
+      car(ctx, c.x, c.y, c.angle, c.color, c.cargo, carScale * (0.55 + 0.45 * fade), 0.35 + 0.65 * fade);
     }
     for (const p of this.particles) {
       ctx.globalAlpha = Math.min(1, p.life * 3);
@@ -422,7 +464,7 @@ class App {
     }
   }
 
-  /** Thick walls on the edges ants can't enter from; the open edge faces the hole. */
+  /** Thick walls on the edges trucks can't enter from; the open edge faces the tunnel. */
   private drawWalls(cs: number): void {
     const { edges, picture: p } = this.level;
     if (edges === "all") return;
@@ -448,19 +490,48 @@ class App {
     ctx.stroke();
   }
 
-  private drawHole(): void {
+  /** A ramp sloping down into the table, with hazard stripes along its lip. */
+  private drawTunnel(): void {
     const ctx = this.ctx;
-    ctx.fillStyle = "#c79a66";
-    ctx.beginPath();
-    ctx.ellipse(HOLE.x, HOLE.y + 3, HOLE.rx + 5, HOLE.ry + 5, 0, 0, Math.PI * 2);
+    const x = TUNNEL.x - TUNNEL.w / 2;
+    const y = TUNNEL.y - TUNNEL.h / 2;
+    const r = 12;
+    ctx.fillStyle = "rgba(110,70,30,0.25)";
+    roundRect(ctx, x - 4, y - 2, TUNNEL.w + 8, TUNNEL.h + 10, r + 4);
     ctx.fill();
-    const g = ctx.createRadialGradient(HOLE.x, HOLE.y + 4, 2, HOLE.x, HOLE.y, HOLE.rx);
-    g.addColorStop(0, "#2e1a0c");
-    g.addColorStop(1, "#7a4b25");
+    // Hazard-striped rim.
+    ctx.save();
+    roundRect(ctx, x - 5, y - 5, TUNNEL.w + 10, TUNNEL.h + 10, r + 4);
+    ctx.clip();
+    ctx.fillStyle = "#f2c230";
+    ctx.fillRect(x - 5, y - 5, TUNNEL.w + 10, TUNNEL.h + 10);
+    ctx.fillStyle = "#3a2a1c";
+    for (let sx = x - 40; sx < x + TUNNEL.w + 20; sx += 14) {
+      ctx.beginPath();
+      ctx.moveTo(sx, y + TUNNEL.h + 6);
+      ctx.lineTo(sx + 7, y + TUNNEL.h + 6);
+      ctx.lineTo(sx + 7 + TUNNEL.h + 12, y - 6);
+      ctx.lineTo(sx + TUNNEL.h + 12, y - 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    // The ramp gets darker as it goes down.
+    const g = ctx.createLinearGradient(0, y, 0, y + TUNNEL.h);
+    g.addColorStop(0, "#6b4a2c");
+    g.addColorStop(1, "#1d140c");
     ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.ellipse(HOLE.x, HOLE.y, HOLE.rx, HOLE.ry, 0, 0, Math.PI * 2);
+    roundRect(ctx, x, y, TUNNEL.w, TUNNEL.h, r);
     ctx.fill();
+    // Lane markings leading in.
+    ctx.strokeStyle = "rgba(255,240,200,0.35)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(TUNNEL.x, y + 4);
+    ctx.lineTo(TUNNEL.x, y + TUNNEL.h - 6);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   private drawSlots(): void {
@@ -565,7 +636,7 @@ class App {
     if (this.game.status === "playing" || this.overlayDelay < 0.4) return;
     if (this.game.status === "won") {
       const last = !this.custom && this.levelIndex === this.specs.length - 1;
-      this.panel("Picture complete!", "Every cube was eaten.", [
+      this.panel("Picture complete!", "Every cube was hauled away.", [
         this.custom
           ? { text: "Play again", color: "#5cc464", fn: () => this.startLevel() }
           : {
@@ -616,6 +687,14 @@ class App {
       this.button(bx, by, bw, 52, a.fn);
     });
   }
+}
+
+/** Rotates `from` toward `to` by at most `maxStep` radians, taking the short way round. */
+function turnToward(from: number, to: number, maxStep: number): number {
+  let diff = to - from;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return from + Math.max(-maxStep, Math.min(maxStep, diff));
 }
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lh: number): void {

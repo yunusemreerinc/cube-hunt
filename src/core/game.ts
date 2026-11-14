@@ -3,7 +3,7 @@ import { cloneLevel, type Block, type ColorId, type Level } from "./types";
 
 export type Status = "playing" | "won" | "stuck";
 
-/** One ant sent from a slot to eat a cell. */
+/** One truck sent from a slot to haul away a cell. */
 export interface Dispatch {
   slot: number;
   cell: number;
@@ -13,7 +13,7 @@ export interface Dispatch {
 /**
  * Game rules, independent of rendering and timing. The view calls `tap()` on
  * player input and `tick()` on a timer; each tick every slot sends at most one
- * ant, which eats one reachable cell of its color.
+ * truck, which removes one reachable cell of its color.
  */
 export class Game {
   readonly level: Level;

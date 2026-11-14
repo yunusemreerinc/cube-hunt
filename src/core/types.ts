@@ -1,10 +1,10 @@
 /** Index into a level's palette. */
 export type ColorId = number;
 
-/** Board edges ants can enter from; see Board. */
+/** Board edges trucks can drive in from; see Board. */
 export type OpenEdges = "all" | "sides" | "bottom";
 
-/** Marker for a cell that is empty (never part of the picture, or already eaten). */
+/** Marker for a cell that is empty (never part of the picture, or already cleared). */
 export const EMPTY = -1;
 
 /** A pixel picture: the raw input for a level. */
@@ -18,7 +18,7 @@ export interface Picture {
   palette: string[];
 }
 
-/** A tray block: `count` ants of one color. */
+/** A tray block: `count` trucks of one color, each hauling away one cube. */
 export interface Block {
   id: number;
   color: ColorId;

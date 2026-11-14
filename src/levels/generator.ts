@@ -9,7 +9,7 @@ export interface GenOptions {
   shuffle: number;
   columns?: number;
   slots?: number;
-  /** Which edges ants enter from: "all" (easy), "sides", or "bottom" (hard). */
+  /** Which edges trucks drive in from: "all" (easy), "sides", or "bottom" (hard). */
   edges?: OpenEdges;
   minBlock?: number;
   maxBlock?: number;
