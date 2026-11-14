@@ -99,7 +99,7 @@ speed toggle simple and lets the solver run thousands of games in milliseconds.
    becomes reachable.
 2. Cut each color's cubes into crates, ordered roughly by when they open up.
    `shuffle` adds noise to that order.
-3. Deal the crates into 4 columns, earliest at the front. All randomness comes
+3. Deal the crates into 5 columns, earliest at the front. All randomness comes
    from a seeded generator, so a level is identical in every browser.
 4. Generate up to 16 candidate trays. Drop any that the greedy solver can't win, so
    every level is winnable without boosters. Of the rest, keep the one whose

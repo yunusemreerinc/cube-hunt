@@ -342,15 +342,15 @@ export interface LevelSpec extends BuildOptions {
 export function builtInLevels(): LevelSpec[] {
   return [
     { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
-    { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 2 },
-    { picture: sunset(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.6, seed: 6 },
-    { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 65 },
-    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 2 },
+    { picture: mushroom(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.85, seed: 11 },
+    { picture: sunset(), edges: "bottom", shuffle: 0.5, targetWinRate: 0.6, seed: 38 },
+    { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 1 },
+    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 1 },
     // A second run of levels, again from easier to harder.
     { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 75 },
-    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 4 },
-    { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 5 },
-    { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 83 },
-    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 1 },
+    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 7 },
+    { picture: duck(), edges: "bottom", shuffle: 0.6, targetWinRate: 0.7, seed: 20 },
+    { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 3 },
+    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 3 },
   ];
 }

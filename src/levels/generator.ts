@@ -63,7 +63,7 @@ function splitCount(n: number, min: number, max: number, rng: () => number): num
 /** Builds a tray for a picture. Not checked for solvability; see `buildLevel`. */
 export function generateLevel(picture: Picture, opts: GenOptions): Level {
   const rng = mulberry32(opts.seed);
-  const columns = opts.columns ?? 4;
+  const columns = opts.columns ?? 5;
   const total = picture.cells.reduce((n, c) => n + (c === EMPTY ? 0 : 1), 0);
   const minBlock = opts.minBlock ?? Math.max(4, Math.round(total / 90));
   const maxBlock = opts.maxBlock ?? Math.max(minBlock + 6, Math.min(80, Math.round(total / 14)));
