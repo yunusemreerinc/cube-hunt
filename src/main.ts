@@ -1,7 +1,9 @@
 import { Game, type Dispatch } from "./core/game";
 import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
-import { buildLevel } from "./levels/generator";
+import { buildLevel, type BuiltLevel } from "./levels/generator";
+import type { BuiltMessage } from "./levels/worker";
+import LevelWorker from "./levels/worker?worker&inline";
 import { pictureFromFile } from "./levels/image";
 import {
   badge,
@@ -20,13 +22,14 @@ import {
   luminance,
   pill,
   pod,
-  roundButton,
+  roundIconButton,
   roundRect,
   shelf,
   shade,
   socketSprite,
   speedArrows,
   speedArrowsWidth,
+  stamp,
   well,
 } from "./view/draw";
 import { RoadMap, type Pt, type Ring } from "./view/roads";
@@ -177,6 +180,8 @@ class App {
   private ctx: CanvasRenderingContext2D;
   private readonly fileInput: HTMLInputElement;
   private readonly specs: LevelSpec[] = builtInLevels();
+  /** Built-in levels already built, by index (in the background or on first play). */
+  private readonly built = new Map<number, BuiltLevel>();
   private levelIndex = 0;
   /** Set while playing a level made from an uploaded image. */
   private custom: Picture | null = null;
@@ -258,6 +263,7 @@ class App {
     if (param >= 1 && param <= this.specs.length) this.levelIndex = param - 1;
     this.resize();
     this.startLevel();
+    this.prebuildLevels();
     let last = performance.now();
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -271,11 +277,50 @@ class App {
 
   // ---- Level lifecycle ----
 
+  /**
+   * Builds every built-in level in a background worker, starting with the
+   * ones next to the current level, so switching levels is instant. If the
+   * browser won't run the worker, levels are built when first played instead.
+   */
+  private prebuildLevels(): void {
+    let worker: Worker;
+    try {
+      worker = new LevelWorker();
+    } catch {
+      return;
+    }
+    worker.onmessage = (e: MessageEvent<BuiltMessage>) => {
+      const { index, columns, slotCount, edges, winRate } = e.data;
+      const picture = this.specs[index].picture;
+      if (!this.built.has(index)) this.built.set(index, { level: { picture, columns, slotCount, edges }, winRate });
+    };
+    worker.onerror = () => worker.terminate();
+    const n = this.specs.length;
+    const order: number[] = [];
+    for (let k = 1; k < n; k++) {
+      for (const i of [this.levelIndex + k, this.levelIndex - k]) {
+        const j = ((i % n) + n) % n;
+        if (!order.includes(j) && j !== this.levelIndex) order.push(j);
+      }
+    }
+    for (const i of order) worker.postMessage(i);
+  }
+
+  /** The built-in level `i`, built once and remembered (the game copies it, so it stays untouched). */
+  private builtLevel(i: number): BuiltLevel {
+    let built = this.built.get(i);
+    if (!built) {
+      const spec = this.specs[i];
+      built = buildLevel(spec.picture, spec);
+      this.built.set(i, built);
+    }
+    return built;
+  }
+
   private startLevel(): void {
-    const spec = this.specs[this.levelIndex];
     const built = this.custom
       ? buildLevel(this.custom, { seed: 1234, shuffle: 0.7, edges: "bottom", targetWinRate: 0.6 })
-      : buildLevel(spec.picture, spec);
+      : this.builtLevel(this.levelIndex);
     this.level = built.level;
     this.winRate = built.winRate;
     this.game = new Game(this.level);
@@ -826,7 +871,7 @@ class App {
     this.buttons = [];
     const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS && this.game.status !== "won";
     const size = `${this.canvas.width}x${this.canvas.height}`;
-    const staticKey = `${this.levelSeq}|${this.game.slots.length}|${canSlot}|${this.speed}|${size}`;
+    const staticKey = `${this.levelSeq}|${this.game.slots.length}|${canSlot}|${size}`;
     if (staticKey !== this.staticKey || !this.staticLayer) {
       this.staticLayer = this.paintLayer(this.staticLayer, () => {
         this.drawBackground();
@@ -910,27 +955,36 @@ class App {
 
   private drawTopBar(): void {
     const ctx = this.ctx;
-    // Round slate buttons with white icons; the colorful buttons live at the bottom.
-    // Static pass: the round buttons, title and difficulty. Live pass: tap areas and the speed button.
-    const live = this.layer === "live";
-    const round = (x: number, y: number, r: number, kind: IconKind, fn: () => void) => {
-      if (live) {
-        this.button(x - r, y - r, r * 2, r * 2, fn);
-        return;
-      }
-      roundButton(ctx, x, y, r);
-      icon(ctx, kind, x, y, r * 0.95, "#4a505b");
-    };
-    round(30, 32, 17, "restart", () => this.startLevel());
-    round(70, 32, 15, "prev", () => this.goToLevel(this.levelIndex - 1));
-    round(300, 32, 15, "next", () => this.goToLevel(this.levelIndex + 1));
-
-    if (live) {
+    // Static pass: the title and difficulty. Live pass: the buttons, so they can show a press.
+    if (this.layer === "live") {
+      // Round slate buttons with white icons; the colorful buttons live at the bottom.
+      const round = (x: number, y: number, r: number, kind: IconKind, fn: () => void) => {
+        const press = this.pressOf(kind);
+        ctx.save();
+        if (press) {
+          // Pressed: the button sinks a little and shrinks, then springs back.
+          ctx.translate(x, y + 2 * press.dip);
+          ctx.scale(1 - 0.12 * press.dip, 1 - 0.12 * press.dip);
+          ctx.translate(-x, -y);
+        }
+        roundIconButton(ctx, x, y, r, kind);
+        if (press) {
+          this.pressGlow(press, x - r, y - r, r * 2, r * 2, () => {
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+          });
+        }
+        ctx.restore();
+        this.button(x - r, y - r, r * 2, r * 2, fn, kind);
+      };
+      round(30, 32, 17, "restart", () => this.startLevel());
+      round(70, 32, 15, "prev", () => this.goToLevel(this.levelIndex - 1));
+      round(300, 32, 15, "next", () => this.goToLevel(this.levelIndex + 1));
+      this.drawSpeedButton();
       const sp = SPEED_BUTTON;
-      this.button(sp.x, sp.y, sp.w, sp.h, () => (this.speed = (this.speed % 3) + 1));
+      this.button(sp.x, sp.y, sp.w, sp.h, () => (this.speed = (this.speed % 3) + 1), "speed");
       return;
     }
-    this.drawSpeedButton();
     const title = this.custom
       ? this.level.picture.name
       : `${this.levelIndex + 1}/${this.specs.length} · ${this.level.picture.name}`;
@@ -949,15 +1003,65 @@ class App {
     const ctx = this.ctx;
     const sp = SPEED_BUTTON;
     const spMid = sp.y + (sp.h - Math.max(3, sp.h * 0.1)) / 2;
-    pod(ctx, sp.x, sp.y, sp.w, sp.h, "#3fb6f2", 16);
-    // The label stays put: the layout is centered for the widest case (three
-    // arrows), and the arrows sit just left of the label, growing leftwards.
-    const textW = labelWidth(ctx, "3x", 17);
-    const groupW = speedArrowsWidth(3, 13) + 6 + textW;
-    const labelX = sp.x + (sp.w + groupW) / 2 - textW / 2;
-    const arrowsW = speedArrowsWidth(this.speed, 13);
-    speedArrows(ctx, this.speed, labelX - textW / 2 - 6 - arrowsW, spMid, 13, "#3fb6f2");
-    countLabel(ctx, `${this.speed}x`, labelX, spMid, 17, "#3fb6f2");
+    const press = this.pressOf("speed");
+    ctx.save();
+    if (press) {
+      ctx.translate(sp.x + sp.w / 2, sp.y + sp.h);
+      ctx.scale(1 - 0.06 * press.dip, 1 - 0.12 * press.dip);
+      ctx.translate(-(sp.x + sp.w / 2), -(sp.y + sp.h) + 2 * press.dip);
+    }
+    const speed = this.speed;
+    stamp(ctx, `speed|${speed}`, sp.x, sp.y, sp.w, sp.h, 20, (g) => {
+      pod(g, sp.x, sp.y, sp.w, sp.h, "#3fb6f2", 16);
+      // The label stays put: the layout is centered for the widest case (three
+      // arrows), and the arrows sit just left of the label, growing leftwards.
+      const textW = labelWidth(g, "3x", 17);
+      const groupW = speedArrowsWidth(3, 13) + 6 + textW;
+      const labelX = sp.x + (sp.w + groupW) / 2 - textW / 2;
+      const arrowsW = speedArrowsWidth(speed, 13);
+      speedArrows(g, speed, labelX - textW / 2 - 6 - arrowsW, spMid, 13, "#3fb6f2");
+      countLabel(g, `${speed}x`, labelX, spMid, 17, "#3fb6f2");
+    });
+    if (press) {
+      const face = sp.h - Math.max(3, sp.h * 0.1);
+      this.pressGlow(press, sp.x, sp.y, sp.w, face, () => roundRect(ctx, sp.x, sp.y, sp.w, face, 16));
+    }
+    ctx.restore();
+  }
+
+  /** The press on the button with this key, if it is being pressed: progress 0..1 and its dip (0 -> 1 -> 0). */
+  private pressOf(key: string): { p: number; dip: number; x: number; y: number } | null {
+    if (!this.press || this.press.key !== key) return null;
+    const p = Math.min(1, this.press.t / PRESS_TIME);
+    return { p, dip: Math.sin(Math.PI * p), x: this.press.x, y: this.press.y };
+  }
+
+  /**
+   * A pressed button's glow, inside the shape `clip` traces over the box: a
+   * quick light flash, and a ripple spreading from where the finger touched.
+   */
+  private pressGlow(
+    press: { p: number; dip: number; x: number; y: number },
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    clip: () => void,
+  ): void {
+    const ctx = this.ctx;
+    ctx.save();
+    clip();
+    ctx.clip();
+    ctx.fillStyle = `rgba(255,255,255,${0.22 * press.dip})`;
+    ctx.fillRect(x, y, w, h);
+    const radius = Math.max(w, h) * 0.9 * (1 - (1 - press.p) ** 2);
+    const ripple = ctx.createRadialGradient(press.x, press.y, radius * 0.55, press.x, press.y, Math.max(1, radius));
+    ripple.addColorStop(0, "rgba(255,255,255,0)");
+    ripple.addColorStop(0.7, `rgba(255,255,255,${0.6 * (1 - press.p)})`);
+    ripple.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = ripple;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
   }
 
   /** The board card, the road around the field and its walls (static); the cubes are drawn by drawCubes. */
@@ -1427,9 +1531,8 @@ class App {
     const ctx = this.ctx;
     const face = h - Math.max(3, h * 0.1);
     const mid = y + face / 2;
-    const pressed = key !== undefined && this.press?.key === key ? this.press : null;
-    const p = pressed ? Math.min(1, pressed.t / PRESS_TIME) : 0;
-    const dip = Math.sin(Math.PI * p);
+    const pressed = key !== undefined ? this.pressOf(key) : null;
+    const dip = pressed ? pressed.dip : 0;
     ctx.save();
     if (pressed) {
       // Pressed: the button sinks a little and squeezes, then springs back.
@@ -1437,33 +1540,20 @@ class App {
       ctx.scale(1 - 0.06 * dip, 1 - 0.12 * dip);
       ctx.translate(-(x + w / 2), -(y + h) + 3 * dip);
     }
-    if (spent) ctx.globalAlpha = 0.75;
-    pod(ctx, x, y, w, h, color, face / 2);
-    const chipR = face / 2 - 6;
-    const chipX = x + 6 + chipR;
-    iconChip(ctx, chipX, mid, chipR);
-    icon(ctx, kind, chipX, mid, chipR * 1.05, color);
-    const right = count === undefined ? x + w - 12 : x + w - 12 - 24;
-    const textX = (chipX + chipR + 4 + right) / 2;
-    countLabel(ctx, label, textX, mid, 18, color, spent, right - chipX - chipR - 8);
-    if (count !== undefined) badge(ctx, count, x + w - 12 - 11, mid, color);
-    if (pressed) {
-      // A soft ripple spreading from where the finger touched, inside the button.
-      ctx.save();
-      roundRect(ctx, x, y, w, face, face / 2);
-      ctx.clip();
-      // A quick light flash across the button, and a ripple from where the finger touched.
-      ctx.fillStyle = `rgba(255,255,255,${0.22 * dip})`;
-      ctx.fillRect(x, y, w, face);
-      const radius = w * 0.9 * (1 - (1 - p) ** 2);
-      const ripple = ctx.createRadialGradient(pressed.x, pressed.y, radius * 0.55, pressed.x, pressed.y, Math.max(1, radius));
-      ripple.addColorStop(0, "rgba(255,255,255,0)");
-      ripple.addColorStop(0.7, `rgba(255,255,255,${0.6 * (1 - p)})`);
-      ripple.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = ripple;
-      ctx.fillRect(x, y, w, face);
-      ctx.restore();
-    }
+    // The button itself is painted once into a cached image and stamped.
+    stamp(ctx, `action|${color}|${kind}|${label}|${count ?? ""}|${spent}`, x, y, w, h, 20, (g) => {
+      if (spent) g.globalAlpha = 0.75;
+      pod(g, x, y, w, h, color, face / 2);
+      const chipR = face / 2 - 6;
+      const chipX = x + 6 + chipR;
+      iconChip(g, chipX, mid, chipR);
+      icon(g, kind, chipX, mid, chipR * 1.05, color);
+      const right = count === undefined ? x + w - 12 : x + w - 12 - 24;
+      const textX = (chipX + chipR + 4 + right) / 2;
+      countLabel(g, label, textX, mid, 18, color, spent, right - chipX - chipR - 8);
+      if (count !== undefined) badge(g, count, x + w - 12 - 11, mid, color);
+    });
+    if (pressed) this.pressGlow(pressed, x, y, w, face, () => roundRect(ctx, x, y, w, face, face / 2));
     ctx.restore();
   }
 
