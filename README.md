@@ -40,7 +40,7 @@ npm run build      # type-check, then build the single-file game into dist/
 There are 10 built-in levels in two runs that each go from easier to harder:
 Strawberry, Mushroom, Sunset, Ringed Planet and Cat, then Cactus, Rocket,
 Rubber Duck, Ice Cream and Watermelon.
-Pictures range from 24×24 cubes (Strawberry) to 40×40 (Ringed Planet).
+Pictures range from 29×29 cubes (Strawberry) to 46×46 (Ringed Planet).
 
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
