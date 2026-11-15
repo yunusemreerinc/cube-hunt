@@ -301,12 +301,62 @@ export function socketSprite(px: number): HTMLCanvasElement {
   return canvas;
 }
 
+/** Most images cached below before a cache starts over (each is small; animated sizes add up). */
+const CACHE_LIMIT = 600;
+const podCache = new Map<string, { canvas: HTMLCanvasElement; w: number; h: number }>();
+const labelCache = new Map<string, { canvas: HTMLCanvasElement; w: number; h: number; cx: number; top: number }>();
+/** Room around a pod in its cached image for the soft shadow below it. */
+const POD_PAD = 16;
+
+/** Device pixels per design unit for `ctx` right now, rounded up to a half so cached images stay sharp. */
+function pixelScale(ctx: CanvasRenderingContext2D): number {
+  const m = ctx.getTransform();
+  return Math.max(1, Math.ceil(Math.hypot(m.a, m.b) * 2) / 2);
+}
+
+/**
+ * A glossy crate or button body (see podDirect), painted once per color, size
+ * and resolution into a cached image and stamped from then on: the gradients
+ * and soft shadow are costly to repaint every frame on a phone.
+ */
+export function pod(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+  r = 14,
+): void {
+  // Sizes are rounded to whole units so animated crates reuse a handful of
+  // images; the image is then drawn stretched to the exact size.
+  const res = pixelScale(ctx);
+  const qw = Math.max(1, Math.round(w));
+  const qh = Math.max(1, Math.round(h));
+  const key = `${color}|${qw}|${qh}|${r}|${res}`;
+  let entry = podCache.get(key);
+  if (!entry) {
+    if (podCache.size > CACHE_LIMIT) podCache.clear();
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil((qw + POD_PAD * 2) * res);
+    canvas.height = Math.ceil((qh + POD_PAD * 2) * res);
+    const g = canvas.getContext("2d")!;
+    g.scale(res, res);
+    podDirect(g, POD_PAD, POD_PAD, qw, qh, color, r);
+    entry = { canvas, w: canvas.width / res, h: canvas.height / res };
+    podCache.set(key, entry);
+  }
+  const sx = w / qw;
+  const sy = h / qh;
+  ctx.drawImage(entry.canvas, x - POD_PAD * sx, y - POD_PAD * sy, entry.w * sx, entry.h * sy);
+}
+
 /**
  * A glossy rounded block for the slots and the tray, in the same style as the
  * board's cubes: soft shadow, darker base for depth, a face that fades from light
  * to the full color, a gloss band and a crisp edge.
  */
-export function pod(
+function podDirect(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -397,6 +447,42 @@ export function countLabel(
     const w = labelWidth(ctx, text, size);
     if (w > maxWidth) size *= maxWidth / w;
   }
+  // Painted once into a cached image (the outline, gradient and soft shadow are
+  // costly to redraw every frame on a phone), then stamped.
+  // Sizes are rounded to whole units (a growing number reuses a few images),
+  // and the image is drawn scaled to the exact size.
+  const res = pixelScale(ctx);
+  const qs = Math.max(1, Math.round(size));
+  const key = `${text}|${qs}|${color}|${flat ? 1 : 0}|${res}`;
+  let entry = labelCache.get(key);
+  if (!entry) {
+    if (labelCache.size > CACHE_LIMIT) labelCache.clear();
+    const tw = labelWidth(ctx, text, qs);
+    const w = tw + qs + 12;
+    const top = qs * 0.9 + 4;
+    const h = top + qs * 1.2 + 8;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(w * res);
+    canvas.height = Math.ceil(h * res);
+    const g = canvas.getContext("2d")!;
+    g.scale(res, res);
+    countLabelDirect(g, text, w / 2, top, qs, color, flat);
+    entry = { canvas, w: canvas.width / res, h: canvas.height / res, cx: w / 2, top };
+    labelCache.set(key, entry);
+  }
+  const k = size / qs;
+  ctx.drawImage(entry.canvas, x - entry.cx * k, y - entry.top * k, entry.w * k, entry.h * k);
+}
+
+function countLabelDirect(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  flat: boolean,
+): void {
   ctx.save();
   labelFont(ctx, size);
   ctx.textAlign = "center";
@@ -641,8 +727,7 @@ export function speedArrows(ctx: CanvasRenderingContext2D, n: number, left: numb
   ctx.lineJoin = "round";
   ctx.lineWidth = size * 0.1;
   ctx.fillStyle = ctx.strokeStyle = shade(color, -0.6);
-  ctx.globalAlpha *= 0.45;
-  ctx.filter = "blur(1px)";
+  ctx.globalAlpha *= 0.4;
   ctx.translate(0, 1.2);
   path();
   ctx.fill();
