@@ -79,7 +79,7 @@ export function quantize(
 }
 
 /** Loads an image file, scales it down to `maxSide` cells and quantizes it. */
-export async function pictureFromFile(file: File, maxSide = 28, colors = 6): Promise<Picture> {
+export async function pictureFromFile(file: File, maxSide = 40, colors = 6): Promise<Picture> {
   const bmp = await createImageBitmap(file);
   const scale = maxSide / Math.max(bmp.width, bmp.height);
   const w = Math.max(4, Math.round(bmp.width * scale));
