@@ -37,10 +37,12 @@ npm run build      # type-check, then build the single-file game into dist/
 
 ## How to play
 
-There are 10 built-in levels in two runs that each go from easier to harder:
-Strawberry, Mushroom, Sunset, Ringed Planet and Cat, then Cactus, Rocket,
-Rubber Duck, Ice Cream and Watermelon.
-Pictures range from 29×29 cubes (Strawberry) to 46×46 (Ringed Planet).
+There are 46 built-in levels. The first 10 are pictures in two runs that each
+go from easier to harder: Strawberry, Mushroom, Sunset, Ringed Planet and Cat,
+then Cactus, Rocket, Rubber Duck, Ice Cream and Watermelon. Pictures range from
+29×29 cubes (Strawberry) to 46×46 (Ringed Planet). Then come the digits 0 to 9
+and the letters A to Z (levels 11 to 46): each is a 32×40 board with the
+character in three color bands on a dark background, at Medium or Hard.
 
 - The tray at the bottom holds crates. Each crate is one color and sends out as
   many trucks as its number. Only the front crate of each column can be tapped.
@@ -82,9 +84,11 @@ src/core/      game rules only, no drawing (easy to test or port to Unity/Godot)
   game.ts      tray columns, slots, tap(), tick(), win/stuck detection
 src/levels/
   art.ts       the built-in pictures (drawn in code) and their difficulty settings
+  numbers.ts   the digit levels 0-9, drawn from 5x7 glyphs
+  letters.ts   the letter levels A-Z, drawn from 5x7 glyphs
   generator.ts picture -> tray of crates; picks a tray that hits a difficulty target
   solver.ts    greedy solver (proves a level is winnable) + random-player win rate
-  worker.ts    builds levels in the background (built-in and uploaded), so the game never stalls
+  worker.ts    builds levels in the background (the next few built-in ones, and uploads), so the game never stalls
   image.ts     uploaded image -> picture (downscale + k-means color reduction)
 src/view/
   draw.ts      canvas drawing helpers (tiles, labels, trucks)

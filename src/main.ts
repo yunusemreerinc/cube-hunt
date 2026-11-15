@@ -84,6 +84,8 @@ const FLY_ARC = 26;
 const LAND_TIME = 0.45;
 /** Seconds a pressed button takes to dip and spring back. */
 const PRESS_TIME = 0.28;
+/** How many levels either side of the current one to build in the background. */
+const PREBUILD_AHEAD = 3;
 /** Seconds an emptied crate takes to pop out of the dock. */
 const LEAVE_TIME = 0.5;
 /**
@@ -188,6 +190,10 @@ class App {
   private customBuilt: BuiltLevel | null = null;
   /** Built-in levels already built, by index (in the background or on first play). */
   private readonly built = new Map<number, BuiltLevel>();
+  /** The worker that builds levels ahead of time; undefined until first used, null if the browser won't run it. */
+  private prebuilder: Worker | null | undefined;
+  /** Levels already sent to that worker. */
+  private readonly prebuildQueued = new Set<number>();
   private levelIndex = 0;
   /** Set while playing a level made from an uploaded image. */
   private custom: Picture | null = null;
@@ -269,7 +275,7 @@ class App {
     if (param >= 1 && param <= this.specs.length) this.levelIndex = param - 1;
     this.resize();
     this.startLevel();
-    this.prebuildLevels();
+    this.prebuildNear();
     let last = performance.now();
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -284,32 +290,42 @@ class App {
   // ---- Level lifecycle ----
 
   /**
-   * Builds every built-in level in a background worker, starting with the
-   * ones next to the current level, so switching levels is instant. If the
-   * browser won't run the worker, levels are built when first played instead.
+   * Builds the built-in levels near the current one in a background worker,
+   * nearest first, so stepping to the next or previous level is instant.
+   * With dozens of levels, building them all up front would keep a phone's
+   * CPU busy for a minute, so it only looks a few levels ahead each time the
+   * level changes. If the browser won't run the worker, levels are built when
+   * first played instead.
    */
-  private prebuildLevels(): void {
-    let worker: Worker;
-    try {
-      worker = new LevelWorker();
-    } catch {
-      return;
-    }
-    worker.onmessage = (e: MessageEvent<BuiltMessage>) => {
-      const { index, columns, slotCount, edges, winRate } = e.data;
-      const picture = this.specs[index].picture;
-      if (!this.built.has(index)) this.built.set(index, { level: { picture, columns, slotCount, edges }, winRate });
-    };
-    worker.onerror = () => worker.terminate();
-    const n = this.specs.length;
-    const order: number[] = [];
-    for (let k = 1; k < n; k++) {
-      for (const i of [this.levelIndex + k, this.levelIndex - k]) {
-        const j = ((i % n) + n) % n;
-        if (!order.includes(j) && j !== this.levelIndex) order.push(j);
+  private prebuildNear(): void {
+    if (this.prebuilder === undefined) {
+      try {
+        const worker = new LevelWorker();
+        worker.onmessage = (e: MessageEvent<BuiltMessage>) => {
+          const { index, columns, slotCount, edges, winRate } = e.data;
+          const picture = this.specs[index].picture;
+          if (!this.built.has(index)) this.built.set(index, { level: { picture, columns, slotCount, edges }, winRate });
+        };
+        worker.onerror = () => {
+          worker.terminate();
+          this.prebuilder = null;
+        };
+        this.prebuilder = worker;
+      } catch {
+        this.prebuilder = null;
       }
     }
-    for (const i of order) worker.postMessage(i);
+    const worker = this.prebuilder;
+    if (!worker) return;
+    const n = this.specs.length;
+    for (let k = 1; k <= PREBUILD_AHEAD; k++) {
+      for (const i of [this.levelIndex + k, this.levelIndex - k]) {
+        const j = ((i % n) + n) % n;
+        if (this.built.has(j) || this.prebuildQueued.has(j)) continue;
+        this.prebuildQueued.add(j);
+        worker.postMessage(j);
+      }
+    }
   }
 
   /**
@@ -389,6 +405,7 @@ class App {
     this.custom = null;
     this.levelIndex = (i + this.specs.length) % this.specs.length;
     this.startLevel();
+    this.prebuildNear();
   }
 
   private async onFile(): Promise<void> {

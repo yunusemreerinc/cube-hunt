@@ -76,7 +76,8 @@ describe("levels", () => {
   it("later levels are harder for a careless player", () => {
     const rates = builtInLevels().map((s) => buildLevel(s.picture, s).winRate);
     expect(rates[0]).toBeGreaterThan(rates[rates.length - 1]);
-  });
+    // Builds every built-in level, which takes a while now there are dozens.
+  }, 60000);
 
   it("generation is deterministic for a seed", () => {
     const p = builtInLevels()[2].picture;

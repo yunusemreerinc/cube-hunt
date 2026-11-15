@@ -1,5 +1,7 @@
 import { EMPTY, type Picture } from "../core/types";
 import type { BuildOptions } from "./generator";
+import { letterLevels } from "./letters";
+import { numberLevels } from "./numbers";
 
 /**
  * Character grid used to author pictures. '.' means transparent.
@@ -356,5 +358,8 @@ export function builtInLevels(): LevelSpec[] {
     { picture: duck(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.7, seed: 1 },
     { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 1 },
     { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 1 },
+    // Then the digits 0-9 and the letters A-Z.
+    ...numberLevels(),
+    ...letterLevels(),
   ];
 }
