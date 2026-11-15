@@ -106,11 +106,11 @@ class Sketch {
 }
 
 /**
- * How much bigger than its design each picture is drawn: half as big again,
- * but never more than 40 cubes across or tall, so cubes stay big enough to see.
+ * How much bigger than its design each picture is drawn: 1.8 times, but never
+ * more than 46 cubes across or tall, so cubes stay big enough to see.
  */
-function scaleFor(w: number, h: number): number {
-  return Math.min(1.5, 40 / Math.max(w, h));
+function scaleFor(w: number, h: number, maxSide = 46): number {
+  return Math.min(1.8, maxSide / Math.max(w, h));
 }
 
 function strawberry(): Picture {
@@ -153,7 +153,9 @@ function mushroom(): Picture {
 }
 
 function sunset(): Picture {
-  const s = new Sketch(24, 24, "P", scaleFor(24, 24));
+  // Kept at 36x36: its stacked color bands make it much harder at bigger sizes,
+  // and no tray brings it back to Hard there.
+  const s = new Sketch(24, 24, "P", scaleFor(24, 24, 36));
   s.rect(0, 4, 23, 7, "K").rect(0, 8, 23, 13, "O");
   s.circle(12, 13.5, 5.2, "Y");
   s.rect(0, 14, 23, 23, "S");
@@ -343,16 +345,16 @@ export interface LevelSpec extends BuildOptions {
 export function builtInLevels(): LevelSpec[] {
   return [
     { picture: strawberry(), edges: "all", shuffle: 0.2, targetWinRate: 1, seed: 11 },
-    { picture: mushroom(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.85, seed: 36 },
+    { picture: mushroom(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.85, seed: 10 },
     // Sunset's color bands block each other, so it needs a few more big crates to stay Hard, not Expert.
     { picture: sunset(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.6, seed: 12, bigChance: 0.25 },
-    { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 1 },
-    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 3 },
+    { picture: planet(), edges: "bottom", shuffle: 2, targetWinRate: 0.48, seed: 2 },
+    { picture: cat(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.4, seed: 5 },
     // A second run of levels, again from easier to harder.
-    { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 6 },
-    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 4 },
-    { picture: duck(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.7, seed: 3 },
-    { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 3 },
-    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 2 },
+    { picture: cactus(), edges: "bottom", shuffle: 1, targetWinRate: 0.8, seed: 1 },
+    { picture: rocket(), edges: "bottom", shuffle: 1, targetWinRate: 0.72, seed: 1 },
+    { picture: duck(), edges: "bottom", shuffle: 0.2, targetWinRate: 0.7, seed: 1 },
+    { picture: iceCream(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.5, seed: 1 },
+    { picture: watermelon(), edges: "bottom", shuffle: 1.5, targetWinRate: 0.35, seed: 1 },
   ];
 }
