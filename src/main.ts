@@ -158,6 +158,8 @@ interface Particle {
 }
 interface Flyer {
   slot: number;
+  /** The tray column it was tapped from. */
+  col: number;
   fromX: number;
   fromY: number;
   t: number;
@@ -470,7 +472,7 @@ class App {
     this.startCounts.set(block.id, count);
     const slot = this.game.tap(col);
     if (slot >= 0) {
-      this.flyers.push({ slot, fromX: from.x, fromY: from.y, t: 0, color, count });
+      this.flyers.push({ slot, col, fromX: from.x, fromY: from.y, t: 0, color, count });
       this.trayRise[col] = 0; // the crates behind move up a row
     }
   }
@@ -1385,6 +1387,16 @@ class App {
       const cy = f.fromY + BLOCK.h / 2 + (r.y + r.h / 2 - f.fromY - BLOCK.h / 2) * t - FLY_ARC * lift;
       pod(ctx, cx - fw / 2, cy - fh / 2, fw, fh, f.color);
       countLabel(ctx, String(f.count), cx, cy - fh / 2 + fh * 0.42, 25 * grow, f.color);
+      // The tap that sent it: the flash and ripple travel with the crate,
+      // spreading from where the finger touched it.
+      const press = this.pressOf(`col${f.col}`);
+      if (press) {
+        const startX = f.fromX + BLOCK.w / 2;
+        const startY = f.fromY + BLOCK.h / 2;
+        const moved = { ...press, x: press.x + cx - startX, y: press.y + cy - startY };
+        const face = fh - Math.max(3, fh * 0.1);
+        this.pressGlow(moved, cx - fw / 2, cy - fh / 2, fw, face, () => roundRect(ctx, cx - fw / 2, cy - fh / 2, fw, face, 14));
+      }
     }
   }
 
@@ -1412,12 +1424,13 @@ class App {
     this.game.columns.forEach((col, c) => {
       if (col.length === 0) return;
       const r = this.blockRect(c, 0);
-      this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
+      this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c), `col${c}`);
     });
     // While nothing in the tray moves, its lanes and crates come from a cached
     // image, repainted only when the crates change; while crates rise or columns
     // close up, they are drawn every frame.
     const animating =
+      this.press?.key.startsWith("col") === true ||
       this.game.columns.some((_, c) => (this.trayRise[c] ?? Infinity) < TRAY_ANIM_TIME) ||
       this.game.columns.some((_, c) => this.colX[c] !== this.columnTargetX(c));
     if (animating) {
@@ -1472,6 +1485,13 @@ class App {
         const h = r.h * (1 + 0.1 * moving);
         const top = y + r.h - h;
         ctx.save();
+        // A tap that could not send the crate (every slot full) still shows: it dips in place.
+        const press = row === 0 && !this.flyers.some((f) => f.col === c) ? this.pressOf(`col${c}`) : null;
+        if (press) {
+          ctx.translate(r.x + r.w / 2, top + h);
+          ctx.scale(1 - 0.06 * press.dip, 1 - 0.12 * press.dip);
+          ctx.translate(-(r.x + r.w / 2), -(top + h) + 3 * press.dip);
+        }
         // A crate is one finished image now, faded once. A slightly stronger
         // opacity for the body, and plain fading for its number, match how it
         // looked when each of its layers was faded and stacked on its own.
@@ -1480,6 +1500,11 @@ class App {
         ctx.globalAlpha = alpha;
         const front = depth < 0.5;
         countLabel(ctx, String(b.count), r.x + r.w / 2, top + h * 0.42, atDepth(TRAY_LABEL, depth), color, !front);
+        if (press) {
+          const face = h - Math.max(3, h * 0.1);
+          const left = r.x + r.w / 2 - w / 2;
+          this.pressGlow(press, left, top, w, face, () => roundRect(ctx, left, top, w, face, 14));
+        }
         ctx.restore();
         if (row === 0) {
           const q = (since - RISE_TIME) / SHEEN_TIME;
