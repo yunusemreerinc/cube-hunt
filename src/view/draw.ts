@@ -529,6 +529,31 @@ function countLabelDirect(
   ctx.restore();
 }
 
+const roundButtonCache = new Map<string, { canvas: HTMLCanvasElement; size: number }>();
+
+/**
+ * A round slate toolbar button with its white icon, painted once per size, icon
+ * and resolution into a cached image and stamped (its soft shadow is costly to
+ * repaint every frame on a phone).
+ */
+export function roundIconButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, kind: IconKind): void {
+  const res = pixelScale(ctx);
+  const key = `${r}|${kind}|${res}`;
+  let entry = roundButtonCache.get(key);
+  if (!entry) {
+    const size = r * 2 + 28; // room for the shadow
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = Math.ceil(size * res);
+    const g = canvas.getContext("2d")!;
+    g.scale(res, res);
+    roundButton(g, size / 2, size / 2, r);
+    icon(g, kind, size / 2, size / 2, r * 0.95, "#4a505b");
+    entry = { canvas, size: canvas.width / res };
+    roundButtonCache.set(key, entry);
+  }
+  ctx.drawImage(entry.canvas, cx - entry.size / 2, cy - entry.size / 2, entry.size, entry.size);
+}
+
 /** A round slate toolbar button with a soft shadow, a light rim and a glassy highlight. */
 export function roundButton(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
   ctx.save();
@@ -610,6 +635,42 @@ export function iconChip(ctx: CanvasRenderingContext2D, cx: number, cy: number, 
   ctx.arc(cx, cy, r - 0.5, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
+}
+
+const stampCache = new Map<string, { canvas: HTMLCanvasElement; w: number; h: number }>();
+
+/**
+ * Draws something costly (gradients, soft shadows, icons) once into a cached
+ * image and stamps it from then on. `paint` draws in the same coordinates as
+ * `ctx`, inside the box at (x, y) of size w x h, with `pad` room around it for
+ * shadows; `key` must change whenever what `paint` draws changes.
+ */
+export function stamp(
+  ctx: CanvasRenderingContext2D,
+  key: string,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  pad: number,
+  paint: (g: CanvasRenderingContext2D) => void,
+): void {
+  const res = pixelScale(ctx);
+  const k = `${key}|${w}|${h}|${res}`;
+  let entry = stampCache.get(k);
+  if (!entry) {
+    if (stampCache.size > CACHE_LIMIT) stampCache.clear();
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil((w + pad * 2) * res);
+    canvas.height = Math.ceil((h + pad * 2) * res);
+    const g = canvas.getContext("2d")!;
+    g.scale(res, res);
+    g.translate(pad - x, pad - y);
+    paint(g);
+    entry = { canvas, w: canvas.width / res, h: canvas.height / res };
+    stampCache.set(k, entry);
+  }
+  ctx.drawImage(entry.canvas, x - pad, y - pad, entry.w, entry.h);
 }
 
 /** A slate dock that holds the slots, with a soft shadow and a highlight along its top edge. */
