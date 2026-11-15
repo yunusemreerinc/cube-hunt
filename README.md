@@ -81,6 +81,7 @@ src/levels/
   art.ts       the built-in pictures (drawn in code) and their difficulty settings
   generator.ts picture -> tray of crates; picks a tray that hits a difficulty target
   solver.ts    greedy solver (proves a level is winnable) + random-player win rate
+  worker.ts    builds the built-in levels in the background, so switching is instant
   image.ts     uploaded image -> picture (downscale + k-means color reduction)
 src/view/
   draw.ts      canvas drawing helpers (tiles, labels, trucks)

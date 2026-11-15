@@ -1,7 +1,9 @@
 import { Game, type Dispatch } from "./core/game";
 import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
-import { buildLevel } from "./levels/generator";
+import { buildLevel, type BuiltLevel } from "./levels/generator";
+import type { BuiltMessage } from "./levels/worker";
+import LevelWorker from "./levels/worker?worker&inline";
 import { pictureFromFile } from "./levels/image";
 import {
   badge,
@@ -178,6 +180,8 @@ class App {
   private ctx: CanvasRenderingContext2D;
   private readonly fileInput: HTMLInputElement;
   private readonly specs: LevelSpec[] = builtInLevels();
+  /** Built-in levels already built, by index (in the background or on first play). */
+  private readonly built = new Map<number, BuiltLevel>();
   private levelIndex = 0;
   /** Set while playing a level made from an uploaded image. */
   private custom: Picture | null = null;
@@ -259,6 +263,7 @@ class App {
     if (param >= 1 && param <= this.specs.length) this.levelIndex = param - 1;
     this.resize();
     this.startLevel();
+    this.prebuildLevels();
     let last = performance.now();
     const frame = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -272,11 +277,50 @@ class App {
 
   // ---- Level lifecycle ----
 
+  /**
+   * Builds every built-in level in a background worker, starting with the
+   * ones next to the current level, so switching levels is instant. If the
+   * browser won't run the worker, levels are built when first played instead.
+   */
+  private prebuildLevels(): void {
+    let worker: Worker;
+    try {
+      worker = new LevelWorker();
+    } catch {
+      return;
+    }
+    worker.onmessage = (e: MessageEvent<BuiltMessage>) => {
+      const { index, columns, slotCount, edges, winRate } = e.data;
+      const picture = this.specs[index].picture;
+      if (!this.built.has(index)) this.built.set(index, { level: { picture, columns, slotCount, edges }, winRate });
+    };
+    worker.onerror = () => worker.terminate();
+    const n = this.specs.length;
+    const order: number[] = [];
+    for (let k = 1; k < n; k++) {
+      for (const i of [this.levelIndex + k, this.levelIndex - k]) {
+        const j = ((i % n) + n) % n;
+        if (!order.includes(j) && j !== this.levelIndex) order.push(j);
+      }
+    }
+    for (const i of order) worker.postMessage(i);
+  }
+
+  /** The built-in level `i`, built once and remembered (the game copies it, so it stays untouched). */
+  private builtLevel(i: number): BuiltLevel {
+    let built = this.built.get(i);
+    if (!built) {
+      const spec = this.specs[i];
+      built = buildLevel(spec.picture, spec);
+      this.built.set(i, built);
+    }
+    return built;
+  }
+
   private startLevel(): void {
-    const spec = this.specs[this.levelIndex];
     const built = this.custom
       ? buildLevel(this.custom, { seed: 1234, shuffle: 0.7, edges: "bottom", targetWinRate: 0.6 })
-      : buildLevel(spec.picture, spec);
+      : this.builtLevel(this.levelIndex);
     this.level = built.level;
     this.winRate = built.winRate;
     this.game = new Game(this.level);
