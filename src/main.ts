@@ -77,6 +77,8 @@ const FLY_SPEED = 3.8;
 const FLY_ARC = 26;
 /** Seconds the landing bounce and glow last. */
 const LAND_TIME = 0.45;
+/** Seconds a pressed button takes to dip and spring back. */
+const PRESS_TIME = 0.28;
 /** Seconds an emptied crate takes to pop out of the dock. */
 const LEAVE_TIME = 0.5;
 /**
@@ -165,6 +167,8 @@ interface Button {
   w: number;
   h: number;
   onClick: () => void;
+  /** Buttons with a key show a press effect when tapped. */
+  key?: string;
 }
 
 class App {
@@ -196,6 +200,8 @@ class App {
   private leavers: { slot: number; color: string; t: number }[] = [];
   /** Per slot: seconds until it may send its next truck, and how much its number is still bumped (1 -> 0). */
   private slotTimer: number[] = new Array(MAX_SLOTS).fill(0);
+  /** The button being pressed (by key), how long ago, and where the finger touched. */
+  private press: { key: string; t: number; x: number; y: number } | null = null;
   private slotBump: number[] = new Array(MAX_SLOTS).fill(0);
   /** Per slot: how much of its landing effect is left (1 just landed -> 0). */
   private slotLand: number[] = new Array(MAX_SLOTS).fill(0);
@@ -395,6 +401,11 @@ class App {
     for (let i = this.buttons.length - 1; i >= 0; i--) {
       const b = this.buttons[i];
       if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        if (b.key) {
+          // Show that the tap landed: the button dips with a ripple, and phones that can give a short tick.
+          this.press = { key: b.key, t: 0, x, y };
+          navigator.vibrate?.(8);
+        }
         b.onClick();
         return;
       }
@@ -489,6 +500,10 @@ class App {
     }
     this.particles = this.particles.filter((p) => p.life > 0);
 
+    if (this.press) {
+      this.press.t += dt;
+      if (this.press.t >= PRESS_TIME) this.press = null;
+    }
     for (const f of this.flyers) {
       f.t += dt * FLY_SPEED;
       if (f.t >= 1) this.land(f);
@@ -786,8 +801,8 @@ class App {
     this.sprites.clear();
   }
 
-  private button(x: number, y: number, w: number, h: number, onClick: () => void): void {
-    this.buttons.push({ x, y, w, h, onClick });
+  private button(x: number, y: number, w: number, h: number, onClick: () => void, key?: string): void {
+    this.buttons.push({ x, y, w, h, onClick, key });
   }
 
   /** Paints `paint` into an offscreen canvas the size of the screen (in the static pass unless told otherwise). */
@@ -1375,20 +1390,22 @@ class App {
     const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS && this.game.status !== "won";
     const by = BAR_Y + 4;
     const bh = 54;
-    if (this.layer === "live") {
-      if (canSlot) this.button(24, by, 176, bh, () => this.addSlot());
-      this.button(220, by, 176, bh, () => this.fileInput.click());
+    if (this.layer === "static") {
+      const band = ctx.createLinearGradient(0, BAR_Y - 10, 0, H);
+      band.addColorStop(0, "rgba(110,70,30,0)");
+      band.addColorStop(0.25, "rgba(110,70,30,0.13)");
+      ctx.fillStyle = band;
+      ctx.fillRect(0, BAR_Y - 10, W, H - BAR_Y + 10);
       return;
     }
-    const band = ctx.createLinearGradient(0, BAR_Y - 10, 0, H);
-    band.addColorStop(0, "rgba(110,70,30,0)");
-    band.addColorStop(0.25, "rgba(110,70,30,0.13)");
-    ctx.fillStyle = band;
-    ctx.fillRect(0, BAR_Y - 10, W, H - BAR_Y + 10);
-
-    // Once used, "+1 Slot" turns a muted slate so it reads as spent.
-    this.actionButton(24, by, 176, bh, canSlot ? "#5cc464" : "#8a909b", "slot", "+1 Slot", canSlot ? "1" : "0", !canSlot);
-    this.actionButton(220, by, 176, bh, "#8f7cf0", "picture", "Your image");
+    // The buttons are drawn live so they can show a press. Once used, "+1 Slot"
+    // turns a muted slate so it reads as spent; a tap on it still dips, to show it landed.
+    this.actionButton(24, by, 176, bh, canSlot ? "#5cc464" : "#8a909b", "slot", "+1 Slot", canSlot ? "1" : "0", !canSlot, "slot");
+    this.button(24, by, 176, bh, () => {
+      if (canSlot) this.addSlot();
+    }, "slot");
+    this.actionButton(220, by, 176, bh, "#8f7cf0", "picture", "Your image", undefined, false, "image");
+    this.button(220, by, 176, bh, () => this.fileInput.click(), "image");
   }
 
   /**
@@ -1405,11 +1422,21 @@ class App {
     label: string,
     count?: string,
     spent = false,
+    key?: string,
   ): void {
     const ctx = this.ctx;
     const face = h - Math.max(3, h * 0.1);
     const mid = y + face / 2;
+    const pressed = key !== undefined && this.press?.key === key ? this.press : null;
+    const p = pressed ? Math.min(1, pressed.t / PRESS_TIME) : 0;
+    const dip = Math.sin(Math.PI * p);
     ctx.save();
+    if (pressed) {
+      // Pressed: the button sinks a little and squeezes, then springs back.
+      ctx.translate(x + w / 2, y + h);
+      ctx.scale(1 - 0.06 * dip, 1 - 0.12 * dip);
+      ctx.translate(-(x + w / 2), -(y + h) + 3 * dip);
+    }
     if (spent) ctx.globalAlpha = 0.75;
     pod(ctx, x, y, w, h, color, face / 2);
     const chipR = face / 2 - 6;
@@ -1420,6 +1447,23 @@ class App {
     const textX = (chipX + chipR + 4 + right) / 2;
     countLabel(ctx, label, textX, mid, 18, color, spent, right - chipX - chipR - 8);
     if (count !== undefined) badge(ctx, count, x + w - 12 - 11, mid, color);
+    if (pressed) {
+      // A soft ripple spreading from where the finger touched, inside the button.
+      ctx.save();
+      roundRect(ctx, x, y, w, face, face / 2);
+      ctx.clip();
+      // A quick light flash across the button, and a ripple from where the finger touched.
+      ctx.fillStyle = `rgba(255,255,255,${0.22 * dip})`;
+      ctx.fillRect(x, y, w, face);
+      const radius = w * 0.9 * (1 - (1 - p) ** 2);
+      const ripple = ctx.createRadialGradient(pressed.x, pressed.y, radius * 0.55, pressed.x, pressed.y, Math.max(1, radius));
+      ripple.addColorStop(0, "rgba(255,255,255,0)");
+      ripple.addColorStop(0.7, `rgba(255,255,255,${0.6 * (1 - p)})`);
+      ripple.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = ripple;
+      ctx.fillRect(x, y, w, face);
+      ctx.restore();
+    }
     ctx.restore();
   }
 
@@ -1491,8 +1535,8 @@ class App {
     actions.forEach((a, i) => {
       const bx = (W - total) / 2 + i * (bw + 16);
       const by = py + ph - 74;
-      this.actionButton(bx, by, bw, 54, a.color, a.icon, a.text);
-      this.button(bx, by, bw, 54, a.fn);
+      this.actionButton(bx, by, bw, 54, a.color, a.icon, a.text, undefined, false, `panel${i}`);
+      this.button(bx, by, bw, 54, a.fn, `panel${i}`);
     });
   }
 }
