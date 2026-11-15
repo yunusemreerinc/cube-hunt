@@ -128,7 +128,8 @@ function strawberry(): Picture {
   // Seeds.
   const seeds = [[3, 5], [8, 5], [13, 5], [6, 6], [11, 6], [2, 7], [5, 8], [10, 8], [13, 8], [2, 10], [7, 10], [12, 10], [6, 12], [10, 12]];
   for (const [x, y] of seeds) s.dot(x, y, "Y", "R");
-  return s.toPicture("Strawberry", { R: "#ec4a5a", G: "#4cc46a", g: "#2b8a4a", Y: "#ffe27a" });
+  // Leaf green and a deep stem green, kept well apart so they read as two colors.
+  return s.toPicture("Strawberry", { R: "#ec4a5a", G: "#48c870", g: "#165030", Y: "#ffe27a" });
 }
 
 function mushroom(): Picture {

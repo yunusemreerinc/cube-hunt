@@ -70,6 +70,8 @@ const TRAY_ROWS = 3;
 const BLOCK = { w: 68, h: 52, gx: 10, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
+/** The speed toggle in the top bar. */
+const SPEED_BUTTON = { x: 326, y: 14, w: 82, h: 38 };
 /** A tapped crate's flight into its slot: speed (1/seconds), and how high it arcs (design px). */
 const FLY_SPEED = 3.8;
 const FLY_ARC = 26;
@@ -85,6 +87,8 @@ const LEAVE_TIME = 0.5;
 const RISE_TIME = 0.32;
 const RISE_STAGGER = 0.06;
 const SHEEN_TIME = 0.4;
+/** How long after a tap the tray is still moving: the cascade plus the shine. */
+const TRAY_ANIM_TIME = RISE_TIME + RISE_STAGGER * TRAY_ROWS + SHEEN_TIME;
 /** How tray crates look at each depth: front, one back, two back, and just out of sight. */
 const TRAY_ALPHA = [1, 0.55, 0.32, 0];
 const TRAY_INSET = [0, 5, 9, 12];
@@ -165,7 +169,8 @@ interface Button {
 
 class App {
   private readonly canvas: HTMLCanvasElement;
-  private readonly ctx: CanvasRenderingContext2D;
+  /** Where drawing goes: the screen, or an offscreen layer while one is being painted. */
+  private ctx: CanvasRenderingContext2D;
   private readonly fileInput: HTMLInputElement;
   private readonly specs: LevelSpec[] = builtInLevels();
   private levelIndex = 0;
@@ -198,6 +203,27 @@ class App {
   private trayRise: number[] = [];
   /** Each tray column's current left edge, gliding toward where it belongs. */
   private colX: number[] = [];
+  /** Canvas pixels per CSS pixel, capped at 2: sharper is not visible at phone size and costs a lot to paint. */
+  private dpr = 1;
+  /**
+   * The screen is drawn in layers so a frame only repaints what moves. The
+   * static layer (background, top bar, board card, road, walls, ramp, dock,
+   * shelf, bottom buttons) is painted once and redrawn only when its key
+   * changes; the cube layer holds the picture's cubes, repainting just the
+   * cells picked up since. Each draw step checks `layer` to know which parts
+   * are its job in the current pass.
+   */
+  private layer: "static" | "live" = "live";
+  private staticLayer: HTMLCanvasElement | null = null;
+  private staticKey = "";
+  private cubeLayer: HTMLCanvasElement | null = null;
+  private cubeKey = "";
+  private cubeDirty: number[] = [];
+  /** The settled tray, cached between taps. */
+  private trayLayer: HTMLCanvasElement | null = null;
+  private trayKey = "";
+  /** Bumped on every level start, so the cached layers know to repaint. */
+  private levelSeq = 0;
   private buttons: Button[] = [];
   private speed = 1;
   private slotBoostUsed = false;
@@ -273,6 +299,7 @@ class App {
     this.trayRise = [];
     this.colX = [];
     this.colX = this.game.columns.map((_, c) => this.columnTargetX(c));
+    this.levelSeq++;
     this.slotBoostUsed = false;
     this.overlayDelay = 0;
   }
@@ -585,7 +612,7 @@ class App {
     const ctx = this.ctx;
     const cs = this.cellSize();
     const s = cs - Math.max(1, cs * 0.1);
-    const px = Math.round(s * this.scale * (window.devicePixelRatio || 1));
+    const px = Math.round(s * this.scale * this.dpr);
     const img = this.sprite(c.color, px, () => cubeSprite(c.color, px));
     const bed = this.bedPoint(c);
     const bedSize = BED_CUBE * this.carScale();
@@ -722,6 +749,7 @@ class App {
   /** The truck lifts its cube off the board, kicking up a little dust. */
   private pickUp(c: Car): void {
     this.shown[c.cell] = EMPTY;
+    this.cubeDirty.push(c.cell);
     // Only now does the space open up, so trucks are never sent for cubes behind it early.
     this.game.collect(c.cell);
     c.cargo = true;
@@ -742,7 +770,8 @@ class App {
   // ---- Draw ----
 
   private resize(): void {
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.dpr = dpr;
     // Fit the container's content box (the whole page in index.html), keeping the aspect ratio.
     const host = this.canvas.parentElement ?? document.body;
     const style = getComputedStyle(host);
@@ -761,13 +790,60 @@ class App {
     this.buttons.push({ x, y, w, h, onClick });
   }
 
+  /** Paints `paint` into an offscreen canvas the size of the screen (in the static pass unless told otherwise). */
+  private paintLayer(reuse: HTMLCanvasElement | null, paint: () => void, pass: "static" | "live" = "static"): HTMLCanvasElement {
+    const layer = reuse ?? document.createElement("canvas");
+    layer.width = this.canvas.width;
+    layer.height = this.canvas.height;
+    const lctx = layer.getContext("2d")!;
+    lctx.setTransform(this.scale * this.dpr, 0, 0, this.scale * this.dpr, 0, 0);
+    const main = this.ctx;
+    this.ctx = lctx;
+    this.layer = pass;
+    paint();
+    this.layer = "live";
+    this.ctx = main;
+    return layer;
+  }
+
   private draw(): void {
     const ctx = this.ctx;
     this.buttons = [];
-    this.drawBackground();
+    const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS && this.game.status !== "won";
+    const size = `${this.canvas.width}x${this.canvas.height}`;
+    const staticKey = `${this.levelSeq}|${this.game.slots.length}|${canSlot}|${this.speed}|${size}`;
+    if (staticKey !== this.staticKey || !this.staticLayer) {
+      this.staticLayer = this.paintLayer(this.staticLayer, () => {
+        this.drawBackground();
+        this.drawTopBar();
+        this.drawBoard();
+        this.drawTunnel();
+        this.drawSlots();
+        this.drawTray();
+        this.drawBottomBar();
+      });
+      this.staticKey = staticKey;
+    }
+    const cubeKey = `${this.levelSeq}|${size}`;
+    if (cubeKey !== this.cubeKey || !this.cubeLayer) {
+      this.cubeLayer = this.paintLayer(this.cubeLayer, () => this.drawCubes(null));
+      this.cubeKey = cubeKey;
+      this.cubeDirty = [];
+    } else if (this.cubeDirty.length > 0) {
+      const lctx = this.cubeLayer.getContext("2d")!;
+      const main = this.ctx;
+      this.ctx = lctx;
+      this.drawCubes(this.cubeDirty);
+      this.ctx = main;
+      this.cubeDirty = [];
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.staticLayer, 0, 0);
+    ctx.drawImage(this.cubeLayer, 0, 0);
+    ctx.restore();
+    this.layer = "live";
     this.drawTopBar();
-    this.drawBoard();
-    this.drawTunnel();
     this.drawSlots();
     this.drawTray();
     this.drawFlyers();
@@ -820,15 +896,26 @@ class App {
   private drawTopBar(): void {
     const ctx = this.ctx;
     // Round slate buttons with white icons; the colorful buttons live at the bottom.
+    // Static pass: the round buttons, title and difficulty. Live pass: tap areas and the speed button.
+    const live = this.layer === "live";
     const round = (x: number, y: number, r: number, kind: IconKind, fn: () => void) => {
+      if (live) {
+        this.button(x - r, y - r, r * 2, r * 2, fn);
+        return;
+      }
       roundButton(ctx, x, y, r);
       icon(ctx, kind, x, y, r * 0.95, "#4a505b");
-      this.button(x - r, y - r, r * 2, r * 2, fn);
     };
     round(30, 32, 17, "restart", () => this.startLevel());
     round(70, 32, 15, "prev", () => this.goToLevel(this.levelIndex - 1));
     round(300, 32, 15, "next", () => this.goToLevel(this.levelIndex + 1));
 
+    if (live) {
+      const sp = SPEED_BUTTON;
+      this.button(sp.x, sp.y, sp.w, sp.h, () => (this.speed = (this.speed % 3) + 1));
+      return;
+    }
+    this.drawSpeedButton();
     const title = this.custom
       ? this.level.picture.name
       : `${this.levelIndex + 1}/${this.specs.length} · ${this.level.picture.name}`;
@@ -840,9 +927,12 @@ class App {
     const chipW = labelWidth(ctx, difficulty, 11) + 18;
     pod(ctx, 185 - chipW / 2, 38, chipW, 17, tone, 8.5);
     countLabel(ctx, difficulty, 185, 45.5, 11, tone, true);
+  }
 
-    // Speed toggle: one arrow per step of speed, then the speed; each tap goes up one, 3x back to 1x.
-    const sp = { x: 326, y: 14, w: 82, h: 38 };
+  /** Speed toggle: one arrow per step of speed, then the speed; each tap goes up one, 3x back to 1x. */
+  private drawSpeedButton(): void {
+    const ctx = this.ctx;
+    const sp = SPEED_BUTTON;
     const spMid = sp.y + (sp.h - Math.max(3, sp.h * 0.1)) / 2;
     pod(ctx, sp.x, sp.y, sp.w, sp.h, "#3fb6f2", 16);
     // The label stays put: the layout is centered for the widest case (three
@@ -853,12 +943,11 @@ class App {
     const arrowsW = speedArrowsWidth(this.speed, 13);
     speedArrows(ctx, this.speed, labelX - textW / 2 - 6 - arrowsW, spMid, 13, "#3fb6f2");
     countLabel(ctx, `${this.speed}x`, labelX, spMid, 17, "#3fb6f2");
-    this.button(sp.x, sp.y, sp.w, sp.h, () => (this.speed = (this.speed % 3) + 1));
   }
 
+  /** The board card, the road around the field and its walls (static); the cubes are drawn by drawCubes. */
   private drawBoard(): void {
     const ctx = this.ctx;
-    const p = this.level.picture;
     ctx.fillStyle = "rgba(120,70,20,0.18)";
     roundRect(ctx, BOARD.x + 2, BOARD.y + 6, BOARD.w, BOARD.h, 16);
     ctx.fill();
@@ -902,15 +991,24 @@ class App {
     ctx.setLineDash([]);
     ctx.lineCap = "butt";
 
+    this.drawWalls(this.cellSize());
+  }
+
+  /**
+   * The picture's cubes, and an empty socket where one has been picked up:
+   * every cell (`cells` null), or just those cells, cleared first.
+   */
+  private drawCubes(cells: number[] | null): void {
+    const ctx = this.ctx;
+    const p = this.level.picture;
     const cs = this.cellSize();
-    this.drawWalls(cs);
     const gap = Math.max(1, cs * 0.1);
     const s = cs - gap;
     // Sprites are drawn at the canvas's real pixel size so they stay sharp.
-    const px = Math.round(s * this.scale * (window.devicePixelRatio || 1));
+    const px = Math.round(s * this.scale * this.dpr);
     const socket = this.sprite("socket", px, () => socketSprite(px));
     const cubes = p.palette.map((color) => this.sprite(color, px, () => cubeSprite(color, px)));
-    for (let i = 0; i < this.shown.length; i++) {
+    const paint = (i: number) => {
       const c = this.shown[i];
       const [cx, cy] = this.cellCenter(i);
       if (c === EMPTY) {
@@ -918,9 +1016,18 @@ class App {
           const inset = s * 0.08;
           ctx.drawImage(socket, cx - s / 2 + inset, cy - s / 2 + inset, s - 2 * inset, s - 2 * inset);
         }
-        continue;
+        return;
       }
       ctx.drawImage(cubes[c], cx - s / 2, cy - s / 2, s, s);
+    };
+    if (cells === null) {
+      for (let i = 0; i < this.shown.length; i++) paint(i);
+      return;
+    }
+    for (const i of cells) {
+      const [cx, cy] = this.cellCenter(i);
+      ctx.clearRect(cx - cs / 2, cy - cs / 2, cs, cs);
+      paint(i);
     }
   }
 
@@ -1058,14 +1165,20 @@ class App {
   private drawSlots(): void {
     const ctx = this.ctx;
     const dx = this.shake > 0 ? Math.sin(this.shake * 60) * 6 : 0;
-    // The dock that holds the slots, sized to however many there are.
-    const first = this.slotRect(0);
-    const last = this.slotRect(this.game.slots.length - 1);
-    dock(ctx, first.x - 8 + dx, first.y - 8, last.x + last.w - first.x + 16, first.h + 16);
+    if (this.layer === "static") {
+      // The dock that holds the slots, sized to however many there are, with an empty bay for each.
+      const first = this.slotRect(0);
+      const last = this.slotRect(this.game.slots.length - 1);
+      dock(ctx, first.x - 8, first.y - 8, last.x + last.w - first.x + 16, first.h + 16);
+      this.game.slots.forEach((_, i) => {
+        const r = this.slotRect(i);
+        well(ctx, r.x, r.y, r.w, r.h);
+      });
+      return;
+    }
     this.game.slots.forEach((b, i) => {
       const r = this.slotRect(i);
       const x = r.x + dx;
-      well(ctx, x, r.y, r.w, r.h);
       if (this.flyers.some((f) => f.slot === i)) return; // drawn in flight, over the tray
       if (!b) {
         const leaving = this.leavers.find((l) => l.slot === i);
@@ -1103,8 +1216,16 @@ class App {
       ctx.save();
       if (waiting) ctx.globalAlpha = 0.6;
       // The number pops a little each time a truck leaves.
+      // Scaled as a whole, so the label is drawn once per count, not once per frame of the pop.
       const bump = this.slotBump[i] ?? 0;
-      countLabel(ctx, String(b.count), x + r.w / 2, r.y + r.h * 0.4, 25 * (1 + 0.22 * bump * bump), color);
+      const pop = 1 + 0.22 * bump * bump;
+      const lx = x + r.w / 2;
+      const ly = r.y + r.h * 0.4;
+      ctx.save();
+      ctx.translate(lx, ly);
+      ctx.scale(pop, pop);
+      countLabel(ctx, String(b.count), 0, 0, 25, color);
+      ctx.restore();
       // How many of this crate's trucks are still to go.
       // A slim glossy pill: a recessed track, and a bright fill with a shine on top.
       const start = this.startCounts.get(b.id) ?? b.count;
@@ -1151,12 +1272,13 @@ class App {
   private drawTray(): void {
     const ctx = this.ctx;
     const cols = this.game.columns.length;
-    if (cols > 0) {
+    const rowsH = TRAY_ROWS * (BLOCK.h + BLOCK.gy);
+    if (this.layer === "static") {
+      if (cols === 0) return;
       // A light shelf under the stacks, lined up with the slot dock above. It
       // keeps its full width while the columns on it close up.
       const left = this.trayLeft(cols);
       const width = cols * BLOCK.w + (cols - 1) * BLOCK.gx;
-      const rowsH = TRAY_ROWS * (BLOCK.h + BLOCK.gy);
       shelf(ctx, left - 8, TRAY_Y - 12, width + 16, rowsH + 16);
       // A soft highlight band behind the front row: these are the crates you can tap.
       const band = ctx.createLinearGradient(0, TRAY_Y - 4, 0, TRAY_Y + BLOCK.h + 4);
@@ -1165,12 +1287,47 @@ class App {
       band.addColorStop(1, "rgba(255,255,255,0)");
       ctx.fillStyle = band;
       ctx.fillRect(left - 4, TRAY_Y - 4, width + 8, BLOCK.h + 8);
-      // Each column that still holds crates sits in its own recessed lane.
-      for (let c = 0; c < cols; c++) {
-        if (this.game.columns[c].length === 0) continue;
-        const r = this.blockRect(c, 0);
-        lane(ctx, r.x - 3, TRAY_Y - 5, r.w + 6, rowsH);
-      }
+      return;
+    }
+    // Live pass. Tap areas for the front crates are registered every frame.
+    this.game.columns.forEach((col, c) => {
+      if (col.length === 0) return;
+      const r = this.blockRect(c, 0);
+      this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
+    });
+    // While nothing in the tray moves, its lanes and crates come from a cached
+    // image, repainted only when the crates change; while crates rise or columns
+    // close up, they are drawn every frame.
+    const animating =
+      this.game.columns.some((_, c) => (this.trayRise[c] ?? Infinity) < TRAY_ANIM_TIME) ||
+      this.game.columns.some((_, c) => this.colX[c] !== this.columnTargetX(c));
+    if (animating) {
+      this.drawTrayStacks();
+      return;
+    }
+    const key =
+      `${this.levelSeq}|${this.canvas.width}x${this.canvas.height}|` +
+      this.game.columns.map((col) => col.slice(0, TRAY_ROWS).map((b) => `${b.id}:${b.count}`).join(",")).join("|");
+    if (key !== this.trayKey || !this.trayLayer) {
+      this.trayLayer = this.paintLayer(this.trayLayer, () => this.drawTrayStacks(), "live");
+      this.trayKey = key;
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.trayLayer, 0, 0);
+    ctx.restore();
+  }
+
+  /** The tray's lanes and crate stacks, as they are this frame. */
+  private drawTrayStacks(): void {
+    const ctx = this.ctx;
+    const cols = this.game.columns.length;
+    const rowsH = TRAY_ROWS * (BLOCK.h + BLOCK.gy);
+    // Each column that still holds crates sits in its own recessed lane.
+    for (let c = 0; c < cols; c++) {
+      if (this.game.columns[c].length === 0) continue;
+      const r = this.blockRect(c, 0);
+      lane(ctx, r.x - 3, TRAY_Y - 5, r.w + 6, rowsH);
     }
     this.game.columns.forEach((col, c) => {
       // Crates further back are smaller and fainter, like a stack waiting its turn.
@@ -1196,15 +1353,18 @@ class App {
         const h = r.h * (1 + 0.1 * moving);
         const top = y + r.h - h;
         ctx.save();
-        ctx.globalAlpha = alpha;
+        // A crate is one finished image now, faded once. A slightly stronger
+        // opacity for the body, and plain fading for its number, match how it
+        // looked when each of its layers was faded and stacked on its own.
+        ctx.globalAlpha = 1 - (1 - alpha) ** 2;
         pod(ctx, r.x + r.w / 2 - w / 2, top, w, h, color);
+        ctx.globalAlpha = alpha;
         const front = depth < 0.5;
         countLabel(ctx, String(b.count), r.x + r.w / 2, top + h * 0.42, atDepth(TRAY_LABEL, depth), color, !front);
         ctx.restore();
         if (row === 0) {
           const q = (since - RISE_TIME) / SHEEN_TIME;
           if (q > 0 && q < 1) sheen(ctx, r.x + r.w / 2 - w / 2, top, w, h, q);
-          this.button(r.x, r.y, r.w, r.h, () => this.tapColumn(c));
         }
       }
     });
@@ -1212,20 +1372,23 @@ class App {
 
   private drawBottomBar(): void {
     const ctx = this.ctx;
+    const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS && this.game.status !== "won";
+    const by = BAR_Y + 4;
+    const bh = 54;
+    if (this.layer === "live") {
+      if (canSlot) this.button(24, by, 176, bh, () => this.addSlot());
+      this.button(220, by, 176, bh, () => this.fileInput.click());
+      return;
+    }
     const band = ctx.createLinearGradient(0, BAR_Y - 10, 0, H);
     band.addColorStop(0, "rgba(110,70,30,0)");
     band.addColorStop(0.25, "rgba(110,70,30,0.13)");
     ctx.fillStyle = band;
     ctx.fillRect(0, BAR_Y - 10, W, H - BAR_Y + 10);
 
-    const canSlot = !this.slotBoostUsed && this.game.slots.length < MAX_SLOTS && this.game.status !== "won";
-    const by = BAR_Y + 4;
-    const bh = 54;
     // Once used, "+1 Slot" turns a muted slate so it reads as spent.
     this.actionButton(24, by, 176, bh, canSlot ? "#5cc464" : "#8a909b", "slot", "+1 Slot", canSlot ? "1" : "0", !canSlot);
-    if (canSlot) this.button(24, by, 176, bh, () => this.addSlot());
     this.actionButton(220, by, 176, bh, "#8f7cf0", "picture", "Your image");
-    this.button(220, by, 176, bh, () => this.fileInput.click());
   }
 
   /**
