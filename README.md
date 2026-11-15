@@ -69,7 +69,10 @@ Pictures range from 24×24 cubes (Strawberry) to 40×40 (Ringed Planet).
   its own. If every slot is full and every crate in them is blocked, you're out
   of moves.
 - Boosters: **+1 Slot** once per level. **Your image** turns any picture into a
-  level. The speed button at the top right steps through **▶ 1x**, **▶▶ 2x** and **▶▶▶ 3x**.
+  level: it is shrunk so its longer side is 40 cubes, with up to 6 colors, so a
+  square picture fills the board, and transparent areas become empty space.
+  Simple, bold pictures work best; pixel art drawn at 40×40 maps one pixel to
+  one cube. The speed button at the top right steps through **▶ 1x**, **▶▶ 2x** and **▶▶▶ 3x**.
 
 ## Code layout
 
@@ -81,7 +84,7 @@ src/levels/
   art.ts       the built-in pictures (drawn in code) and their difficulty settings
   generator.ts picture -> tray of crates; picks a tray that hits a difficulty target
   solver.ts    greedy solver (proves a level is winnable) + random-player win rate
-  worker.ts    builds the built-in levels in the background, so switching is instant
+  worker.ts    builds levels in the background (built-in and uploaded), so the game never stalls
   image.ts     uploaded image -> picture (downscale + k-means color reduction)
 src/view/
   draw.ts      canvas drawing helpers (tiles, labels, trucks)

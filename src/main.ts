@@ -2,7 +2,7 @@ import { Game, type Dispatch } from "./core/game";
 import { EMPTY, type Level, type Picture } from "./core/types";
 import { builtInLevels, type LevelSpec } from "./levels/art";
 import { buildLevel, type BuiltLevel } from "./levels/generator";
-import type { BuiltMessage } from "./levels/worker";
+import type { BuildRequest, BuiltMessage } from "./levels/worker";
 import LevelWorker from "./levels/worker?worker&inline";
 import { pictureFromFile } from "./levels/image";
 import {
@@ -73,6 +73,8 @@ const TRAY_ROWS = 3;
 const BLOCK = { w: 68, h: 52, gx: 10, gy: 8 };
 const BAR_Y = 836;
 const MAX_SLOTS = 6;
+/** How a level is built from an uploaded picture. */
+const CUSTOM_LEVEL = { seed: 1234, shuffle: 0.7, edges: "bottom" as const, targetWinRate: 0.6 };
 /** The speed toggle in the top bar. */
 const SPEED_BUTTON = { x: 326, y: 14, w: 82, h: 38 };
 /** A tapped crate's flight into its slot: speed (1/seconds), and how high it arcs (design px). */
@@ -182,6 +184,8 @@ class App {
   private ctx: CanvasRenderingContext2D;
   private readonly fileInput: HTMLInputElement;
   private readonly specs: LevelSpec[] = builtInLevels();
+  /** The level built from the uploaded picture, kept so a restart is instant. */
+  private customBuilt: BuiltLevel | null = null;
   /** Built-in levels already built, by index (in the background or on first play). */
   private readonly built = new Map<number, BuiltLevel>();
   private levelIndex = 0;
@@ -308,6 +312,32 @@ class App {
     for (const i of order) worker.postMessage(i);
   }
 
+  /**
+   * Builds a level from an uploaded picture in a worker of its own, so the
+   * game keeps running and shows "Building level…" meanwhile. Without a worker
+   * it builds here, after letting that message show for a frame.
+   */
+  private async buildCustom(picture: Picture): Promise<BuiltLevel> {
+    const opts = CUSTOM_LEVEL;
+    try {
+      const worker = new LevelWorker();
+      const built = await new Promise<BuiltLevel>((resolve, reject) => {
+        worker.onmessage = (e: MessageEvent<BuiltMessage>) => {
+          const { columns, slotCount, edges, winRate } = e.data;
+          resolve({ level: { picture, columns, slotCount, edges }, winRate });
+        };
+        worker.onerror = () => reject(new Error("level worker failed"));
+        const req: BuildRequest = { picture, opts };
+        worker.postMessage(req);
+      });
+      worker.terminate();
+      return built;
+    } catch {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return buildLevel(picture, opts);
+    }
+  }
+
   /** The built-in level `i`, built once and remembered (the game copies it, so it stays untouched). */
   private builtLevel(i: number): BuiltLevel {
     let built = this.built.get(i);
@@ -320,9 +350,7 @@ class App {
   }
 
   private startLevel(): void {
-    const built = this.custom
-      ? buildLevel(this.custom, { seed: 1234, shuffle: 0.7, edges: "bottom", targetWinRate: 0.6 })
-      : this.builtLevel(this.levelIndex);
+    const built = this.custom && this.customBuilt ? this.customBuilt : this.builtLevel(this.levelIndex);
     this.level = built.level;
     this.winRate = built.winRate;
     this.game = new Game(this.level);
@@ -369,7 +397,9 @@ class App {
     if (!file) return;
     try {
       this.message = "Building level…";
-      this.custom = await pictureFromFile(file);
+      const picture = await pictureFromFile(file);
+      this.customBuilt = await this.buildCustom(picture);
+      this.custom = picture;
       this.message = "";
       this.startLevel();
     } catch (err) {
