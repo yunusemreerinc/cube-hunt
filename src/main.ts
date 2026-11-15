@@ -1358,13 +1358,10 @@ class App {
         ctx.restore();
       }
       const wob = land > 0 ? Math.sin((1 - land) * Math.PI * 3) * land * 0.1 : 0;
-      // Tapped: it dips and squeezes like the buttons (a tap here only shows it landed).
-      const press = this.pressOf(`slot${i}`);
-      const dip = press ? press.dip : 0;
       ctx.save();
       ctx.translate(x + r.w / 2, r.y + r.h);
-      ctx.scale((1 + wob) * (1 - 0.06 * dip), (1 - wob) * (1 - 0.12 * dip));
-      ctx.translate(-(x + r.w / 2), -(r.y + r.h) + 3 * dip);
+      ctx.scale(1 + wob, 1 - wob);
+      ctx.translate(-(x + r.w / 2), -(r.y + r.h));
       pod(ctx, x, r.y, r.w, r.h, color);
       if (waiting) holdStripes(ctx, x, r.y, r.w, r.h, color);
       ctx.save();
@@ -1398,13 +1395,8 @@ class App {
       roundRect(ctx, barX + 1, barY + 0.8, Math.max(0, fillW - 2), barH * 0.35, barH * 0.2);
       ctx.fill();
       ctx.restore();
-      if (press) {
-        const face = r.h - Math.max(3, r.h * 0.1);
-        this.pressGlow(press, x, r.y, r.w, face, () => roundRect(ctx, x, r.y, r.w, face, 14));
-      }
       ctx.restore();
       if (waiting) pill(ctx, "blocked", x + r.w / 2, r.y + r.h + 9);
-      this.button(r.x, r.y, r.w, r.h, () => {}, `slot${i}`);
     });
   }
 
